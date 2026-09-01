@@ -4,6 +4,16 @@
 
 ---
 
+> ### 📢 特约赞助与推荐
+> 
+> **[爱维云 (LoveVPS)](https://lovevps.cn/)** —— 专注于高质量海外原生网络与云主机服务
+> - 🌐 **官网直达**：[https://lovevps.cn/](https://lovevps.cn/)
+> - 🔥 **主打产品**：美国双 ISP 住宅云主机，纯净原生住宅 IP，跨境出海与解锁首选
+> - 💰 **特惠福利**：2 核 2GB 内存 **38 元起**，首单享 **七五折** 优惠，**续费同价**
+> - 🛡️ **服务保障**：支持 24 小时内全额退款，售后无忧
+
+---
+
 ## 🌟 核心功能一览
 
 ### 1. 服务器性能与网络综合测评 (Benchmark & Quality)
@@ -50,41 +60,16 @@
 
 ---
 
-## 🚀 使用方法
+## 🚀 一键调用命令
 
-### 本地直接运行
-在当前服务器脚本目录下执行：
+### 任意 Linux VPS 终端执行：
 ```bash
-chmod +x main.sh
-./main.sh
+bash <(curl -fsSL https://raw.githubusercontent.com/ithtelab/vps-toolbox/main/main.sh)
 ```
 
-### 远程一键调用（部署到 GitHub / Gitee 后）
-只需要把仓库推送到远程平台，即可支持一条命令直接唤出工具箱：
+*(国内服务器若直连受限，可使用加速通道)*：
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/你的用户名/你的仓库名/main/main.sh)
-```
-或使用国内/加速节点：
-```bash
-bash <(curl -fsSL https://ghproxy.com/https://raw.githubusercontent.com/你的用户名/你的仓库名/main/main.sh)
+bash <(curl -fsSL https://ghproxy.com/https://raw.githubusercontent.com/ithtelab/vps-toolbox/main/main.sh)
 ```
 
----
-
-## 📁 项目目录结构
-
-```
-├── main.sh                 # 主入口脚本（负责环境检测、主菜单交互、子模块路由）
-├── README.md               # 项目使用说明文档
-├── utils/                  # 工具库
-│   ├── colors.sh           # 终端彩色输出、Banner 格式化
-│   ├── sys_detect.sh       # 系统与硬件信息识别（OS/CPU/架构/内存/虚拟化）
-│   └── helper.sh           # 基础运维依赖检测、防火墙端口放行函数
-└── modules/                # 业务子模块
-    ├── bench.sh            # 测评模块 (NQ, TQ, Geekbench 5, 流媒体, 路由, 测速)
-    ├── proxy.sh            # 代理模块 (Socks5, Clash/Mihomo, Realm 转发)
-    ├── system.sh           # 系统优化 (BBR, Swap, 换源, 时区, DNS)
-    ├── docker.sh           # 容器与应用部署 (Docker, 探针, 面板, SSL)
-    ├── security.sh         # 安全加固 (SSH 改端口, 密钥登录, 防火墙, Fail2ban)
-    └── clean.sh            # 系统清理与运维监控
-```
+> **快捷指令提示**：首次运行后，以后在终端任何目录下直接输入 `toolbox` 即可秒开工具箱！
