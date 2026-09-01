@@ -117,7 +117,8 @@ run_speedtest() {
 measure_latency() {
     local host="$1"
     local ping_out
-    ping_out=$(ping -c 3 -W 2 "$host" 2>/dev/null | grep -oP '\d+\.\d+(?=/)' | tail -n 1)
+    # Portable ping avg extraction (works on GNU, BSD, BusyBox/Alpine grep)
+    ping_out=$(ping -c 3 -W 2 "$host" 2>/dev/null | awk -F'/' '/min\/avg/ {print $5}')
     if [ -n "$ping_out" ]; then
         echo "PING|$ping_out"
         return
@@ -125,11 +126,16 @@ measure_latency() {
     # ICMP blocked -> try TCP connect handshake time via bash /dev/tcp (no extra tools)
     local tcp_ms
     local start_ms end_ms
+    # %3N (millis) is GNU-only; fall back to whole seconds on BusyBox
     start_ms=$(date +%s%3N 2>/dev/null || date +%s)
     if (exec 3<>"/dev/tcp/${host}/443") 2>/dev/null; then
         end_ms=$(date +%s%3N 2>/dev/null || date +%s)
         exec 3>&-
         tcp_ms=$(( (end_ms - start_ms) ))
+        # If a seconds-scale fallback was used, convert to ms for consistent units
+        if [ "$tcp_ms" -lt 10 ]; then
+            tcp_ms=$(( tcp_ms * 1000 ))
+        fi
         echo "TCP|${tcp_ms}"
         return
     fi
