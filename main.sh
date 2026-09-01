@@ -5,8 +5,43 @@
 
 set -e
 
-# Base directory
-BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Target installation directory on remote servers
+TOOLBOX_DIR="/etc/vps-toolbox"
+REPO_RAW_URL="https://raw.githubusercontent.com/ithtelab/vps-toolbox/main"
+GH_PROXY="https://ghproxy.com/https://raw.githubusercontent.com/ithtelab/vps-toolbox/main"
+
+# Check if running in a local full repo directory or via curl | bash
+if [ -d "$(dirname "${BASH_SOURCE[0]}")/utils" ]; then
+    BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+    # Running remotely via curl / pipe / process substitution
+    echo -e "\033[1;34m[INFO]\033[0m 正在初始化 VPS 多功能工具箱运行环境..."
+    mkdir -p "${TOOLBOX_DIR}/utils" "${TOOLBOX_DIR}/modules"
+
+    files=(
+        "utils/colors.sh"
+        "utils/sys_detect.sh"
+        "utils/helper.sh"
+        "modules/bench.sh"
+        "modules/proxy.sh"
+        "modules/system.sh"
+        "modules/security.sh"
+        "modules/docker.sh"
+        "modules/clean.sh"
+        "main.sh"
+    )
+
+    for f in "${files[@]}"; do
+        if ! curl -fsSL "${REPO_RAW_URL}/${f}" -o "${TOOLBOX_DIR}/${f}" 2>/dev/null; then
+            curl -fsSL "${GH_PROXY}/${f}" -o "${TOOLBOX_DIR}/${f}" 2>/dev/null || true
+        fi
+    done
+
+    chmod +x "${TOOLBOX_DIR}/main.sh"
+    ln -sf "${TOOLBOX_DIR}/main.sh" /usr/local/bin/toolbox 2>/dev/null || true
+
+    BASE_DIR="${TOOLBOX_DIR}"
+fi
 
 # Source Utility Libraries
 # shellcheck source=utils/colors.sh
@@ -35,6 +70,33 @@ init_environment() {
     check_root
     detect_system
     install_dependencies
+}
+
+# Self update
+update_toolbox() {
+    info "正在拉取最新脚本与模块..."
+    mkdir -p "${TOOLBOX_DIR}/utils" "${TOOLBOX_DIR}/modules"
+    local update_files=(
+        "utils/colors.sh"
+        "utils/sys_detect.sh"
+        "utils/helper.sh"
+        "modules/bench.sh"
+        "modules/proxy.sh"
+        "modules/system.sh"
+        "modules/security.sh"
+        "modules/docker.sh"
+        "modules/clean.sh"
+        "main.sh"
+    )
+    for f in "${update_files[@]}"; do
+        if ! curl -fsSL "${REPO_RAW_URL}/${f}" -o "${TOOLBOX_DIR}/${f}" 2>/dev/null; then
+            curl -fsSL "${GH_PROXY}/${f}" -o "${TOOLBOX_DIR}/${f}" 2>/dev/null || true
+        fi
+    done
+    chmod +x "${TOOLBOX_DIR}/main.sh"
+    ln -sf "${TOOLBOX_DIR}/main.sh" /usr/local/bin/toolbox 2>/dev/null || true
+    success "工具箱已更新为最新版本！"
+    pause
 }
 
 # Main Interactive Menu
@@ -80,9 +142,7 @@ main_menu() {
                 menu_clean
                 ;;
             u|U)
-                info "正在拉取最新脚本版本..."
-                success "当前已是最新版本！"
-                pause
+                update_toolbox
                 ;;
             0)
                 echo ""
