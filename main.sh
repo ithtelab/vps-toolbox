@@ -8,7 +8,28 @@ set -e
 # Target installation directory on remote servers
 TOOLBOX_DIR="/etc/vps-toolbox"
 REPO_RAW_URL="https://raw.githubusercontent.com/ithtelab/vps-toolbox/main"
+CDN_URL="https://cdn.jsdelivr.net/gh/ithtelab/vps-toolbox@main"
 GH_PROXY="https://ghproxy.com/https://raw.githubusercontent.com/ithtelab/vps-toolbox/main"
+
+# Download a file with anti-cache & multi-mirror fallback
+download_file() {
+    local rel_path="$1"
+    local target_file="${TOOLBOX_DIR}/${rel_path}"
+    local ts
+    ts=$(date +%s)
+    
+    mkdir -p "$(dirname "$target_file")"
+    
+    # Try GitHub Raw (no-cache) -> jsDelivr CDN -> ghproxy
+    if curl -fsSL -H 'Cache-Control: no-cache' "${REPO_RAW_URL}/${rel_path}?v=${ts}" -o "$target_file" 2>/dev/null; then
+        return 0
+    elif curl -fsSL "${CDN_URL}/${rel_path}?v=${ts}" -o "$target_file" 2>/dev/null; then
+        return 0
+    elif curl -fsSL "${GH_PROXY}/${rel_path}?v=${ts}" -o "$target_file" 2>/dev/null; then
+        return 0
+    fi
+    return 1
+}
 
 # Check if running in a local full repo directory or via curl | bash
 if [ -d "$(dirname "${BASH_SOURCE[0]}")/utils" ]; then
@@ -32,13 +53,10 @@ else
     )
 
     for f in "${files[@]}"; do
-        if ! curl -fsSL "${REPO_RAW_URL}/${f}" -o "${TOOLBOX_DIR}/${f}" 2>/dev/null; then
-            curl -fsSL "${GH_PROXY}/${f}" -o "${TOOLBOX_DIR}/${f}" 2>/dev/null || true
-        fi
+        download_file "$f" || true
     done
 
     chmod +x "${TOOLBOX_DIR}/main.sh"
-    # Create global shortcut 'hte' and compatible alias 'toolbox'
     ln -sf "${TOOLBOX_DIR}/main.sh" /usr/local/bin/hte 2>/dev/null || true
     ln -sf "${TOOLBOX_DIR}/main.sh" /usr/local/bin/toolbox 2>/dev/null || true
 
@@ -77,10 +95,12 @@ init_environment() {
     fi
 }
 
-# Self update
+# Self update with cache-busting & instant process reload
 update_toolbox() {
-    info "正在拉取最新脚本与模块..."
+    echo ""
+    info "正在穿透 CDN 缓存拉取最新代码与所有模块..."
     mkdir -p "${TOOLBOX_DIR}/utils" "${TOOLBOX_DIR}/modules"
+    
     local update_files=(
         "utils/colors.sh"
         "utils/sys_detect.sh"
@@ -93,16 +113,26 @@ update_toolbox() {
         "modules/clean.sh"
         "main.sh"
     )
+
+    local fail_count=0
     for f in "${update_files[@]}"; do
-        if ! curl -fsSL "${REPO_RAW_URL}/${f}" -o "${TOOLBOX_DIR}/${f}" 2>/dev/null; then
-            curl -fsSL "${GH_PROXY}/${f}" -o "${TOOLBOX_DIR}/${f}" 2>/dev/null || true
+        if ! download_file "$f"; then
+            fail_count=$((fail_count + 1))
         fi
     done
+
     chmod +x "${TOOLBOX_DIR}/main.sh"
     ln -sf "${TOOLBOX_DIR}/main.sh" /usr/local/bin/hte 2>/dev/null || true
     ln -sf "${TOOLBOX_DIR}/main.sh" /usr/local/bin/toolbox 2>/dev/null || true
-    success "黑天鹅工具箱已更新为最新版本！"
-    pause
+
+    if [ "$fail_count" -eq 0 ]; then
+        success "黑天鹅工具箱已成功更新至最新版本！正在立即重新载入..."
+        sleep 1
+        exec bash "${TOOLBOX_DIR}/main.sh"
+    else
+        warn "部分文件更新可能受网络阻碍，建议检查服务器网络。"
+        pause
+    fi
 }
 
 # Main Interactive Menu
