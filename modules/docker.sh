@@ -61,8 +61,8 @@ install_baota() {
             fi
             ;;
         2)
-            info "正在拉取 aaPanel 国际版官方安装脚本..."
-            run_remote_script "http://www.aapanel.com/script/install_6.0_en.sh"
+            info "正在拉取 aaPanel 国际版官方安装脚本 (HTTPS)..."
+            run_remote_script "https://www.aapanel.com/script/install_en_6.0.sh"
             ;;
         *)
             return
@@ -137,7 +137,7 @@ menu_docker() {
         echo -e " ${B_GREEN}2.${NC} 安装 哪吒探针 (Nezha Agent/Dashboard)"
         echo -e " ${B_GREEN}3.${NC} 安装 1Panel 现代化开源运维面板"
         echo -e " ${B_GREEN}4.${NC} 安装 宝塔 Linux 面板 (官方正式版 / 国际版 aaPanel)"
-        echo -e " ${B_GREEN}5.${NC} Acme.sh 免费泛域名 / 单域名 SSL 证书申请"
+        echo -e " ${B_GREEN}5.${NC} Acme.sh 免费单域名 SSL 证书申请 (HTTP-01 自动续期)"
         echo -e " ${B_GREEN}6.${NC} 一键部署自建 Speedtest 测速网页 (LibreSpeed)"
         separator
         echo -e " ${B_RED}0.${NC} 返回主菜单"
