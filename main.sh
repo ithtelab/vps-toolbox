@@ -16,16 +16,16 @@ download_file() {
     local rel_path="$1"
     local target_file="${TOOLBOX_DIR}/${rel_path}"
     local ts
-    ts=$(date +%s)
+    ts=$(date +%s%N 2>/dev/null || date +%s)
     
     mkdir -p "$(dirname "$target_file")"
     
     # Try GitHub Raw (no-cache) -> jsDelivr CDN -> ghproxy
-    if curl -fsSL -H 'Cache-Control: no-cache' "${REPO_RAW_URL}/${rel_path}?v=${ts}" -o "$target_file" 2>/dev/null; then
+    if curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "${REPO_RAW_URL}/${rel_path}?t=${ts}" -o "$target_file" 2>/dev/null; then
         return 0
-    elif curl -fsSL "${CDN_URL}/${rel_path}?v=${ts}" -o "$target_file" 2>/dev/null; then
+    elif curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "${CDN_URL}/${rel_path}?t=${ts}" -o "$target_file" 2>/dev/null; then
         return 0
-    elif curl -fsSL "${GH_PROXY}/${rel_path}?v=${ts}" -o "$target_file" 2>/dev/null; then
+    elif curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "${GH_PROXY}/${rel_path}?t=${ts}" -o "$target_file" 2>/dev/null; then
         return 0
     fi
     return 1
@@ -63,27 +63,31 @@ else
     BASE_DIR="${TOOLBOX_DIR}"
 fi
 
-# Source Utility Libraries
-# shellcheck source=utils/colors.sh
-[ -f "${BASE_DIR}/utils/colors.sh" ] && . "${BASE_DIR}/utils/colors.sh"
-# shellcheck source=utils/sys_detect.sh
-[ -f "${BASE_DIR}/utils/sys_detect.sh" ] && . "${BASE_DIR}/utils/sys_detect.sh"
-# shellcheck source=utils/helper.sh
-[ -f "${BASE_DIR}/utils/helper.sh" ] && . "${BASE_DIR}/utils/helper.sh"
+# Load or Reload All Modules into Memory
+load_modules() {
+    # shellcheck source=utils/colors.sh
+    [ -f "${BASE_DIR}/utils/colors.sh" ] && . "${BASE_DIR}/utils/colors.sh"
+    # shellcheck source=utils/sys_detect.sh
+    [ -f "${BASE_DIR}/utils/sys_detect.sh" ] && . "${BASE_DIR}/utils/sys_detect.sh"
+    # shellcheck source=utils/helper.sh
+    [ -f "${BASE_DIR}/utils/helper.sh" ] && . "${BASE_DIR}/utils/helper.sh"
 
-# Source Business Modules
-# shellcheck source=modules/bench.sh
-[ -f "${BASE_DIR}/modules/bench.sh" ] && . "${BASE_DIR}/modules/bench.sh"
-# shellcheck source=modules/proxy.sh
-[ -f "${BASE_DIR}/modules/proxy.sh" ] && . "${BASE_DIR}/modules/proxy.sh"
-# shellcheck source=modules/system.sh
-[ -f "${BASE_DIR}/modules/system.sh" ] && . "${BASE_DIR}/modules/system.sh"
-# shellcheck source=modules/security.sh
-[ -f "${BASE_DIR}/modules/security.sh" ] && . "${BASE_DIR}/modules/security.sh"
-# shellcheck source=modules/docker.sh
-[ -f "${BASE_DIR}/modules/docker.sh" ] && . "${BASE_DIR}/modules/docker.sh"
-# shellcheck source=modules/clean.sh
-[ -f "${BASE_DIR}/modules/clean.sh" ] && . "${BASE_DIR}/modules/clean.sh"
+    # Business Modules
+    # shellcheck source=modules/bench.sh
+    [ -f "${BASE_DIR}/modules/bench.sh" ] && . "${BASE_DIR}/modules/bench.sh"
+    # shellcheck source=modules/proxy.sh
+    [ -f "${BASE_DIR}/modules/proxy.sh" ] && . "${BASE_DIR}/modules/proxy.sh"
+    # shellcheck source=modules/system.sh
+    [ -f "${BASE_DIR}/modules/system.sh" ] && . "${BASE_DIR}/modules/system.sh"
+    # shellcheck source=modules/security.sh
+    [ -f "${BASE_DIR}/modules/security.sh" ] && . "${BASE_DIR}/modules/security.sh"
+    # shellcheck source=modules/docker.sh
+    [ -f "${BASE_DIR}/modules/docker.sh" ] && . "${BASE_DIR}/modules/docker.sh"
+    # shellcheck source=modules/clean.sh
+    [ -f "${BASE_DIR}/modules/clean.sh" ] && . "${BASE_DIR}/modules/clean.sh"
+}
+
+load_modules
 
 # Global Init
 init_environment() {
@@ -95,7 +99,7 @@ init_environment() {
     fi
 }
 
-# Self update with cache-busting & instant process reload
+# Self update with cache-busting & instant process replacement
 update_toolbox() {
     echo ""
     info "正在穿透 CDN 缓存拉取最新代码与所有模块..."
@@ -127,6 +131,8 @@ update_toolbox() {
 
     if [ "$fail_count" -eq 0 ]; then
         success "黑天鹅工具箱已成功更新至最新版本！正在立即重新载入..."
+        # Force re-source in current shell and replace process
+        load_modules
         sleep 1
         exec bash "${TOOLBOX_DIR}/main.sh"
     else
@@ -150,7 +156,7 @@ main_menu() {
         echo -e " ${B_GREEN}[1]${NC} ${B_WHITE}服务器性能与网络综合测评${NC}  ${PURPLE}(NQ, TQ, Geekbench 5, 流媒体, 路由, Ping)${NC}"
         echo -e " ${B_GREEN}[2]${NC} ${B_WHITE}代理与穿透/转发服务搭建${NC}   ${PURPLE}(Socks5 一键, Clash Party/Mihomo, Realm)${NC}"
         echo -e " ${B_GREEN}[3]${NC} ${B_WHITE}系统优化 / WARP / 一键DD重装${NC} ${PURPLE}(WARP双栈, DD纯净重装, BBR全家桶, Swap, DNS)${NC}"
-        echo -e " ${B_GREEN}[4]${NC} ${B_WHITE}Docker 与常用运维环境部署${NC} ${PURPLE}(Docker, 哪吒探针, 1Panel, SSL证书)${NC}"
+        echo -e " ${B_GREEN}[4]${NC} ${B_WHITE}Docker 与常用运维环境部署${NC} ${PURPLE}(Docker, 哪吒探针, 1Panel, 宝塔面板, SSL)${NC}"
         echo -e " ${B_GREEN}[5]${NC} ${B_WHITE}VPS 安全加固与防护管理${NC}    ${PURPLE}(SSH改端口, 密钥登录, Fail2ban解封, 防SYN攻击)${NC}"
         echo -e " ${B_GREEN}[6]${NC} ${B_WHITE}系统深度清理与日常监控${NC}   ${PURPLE}(垃圾日志清理, 硬件查看, htop/iftop)${NC}"
         separator
