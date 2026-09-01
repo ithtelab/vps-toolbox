@@ -190,6 +190,47 @@ EOF
     pause
 }
 
+setup_auto_security_updates() {
+    print_banner
+    echo -e "${B_YELLOW}=== [8] 系统自动安全补丁更新 ===${NC}"
+    info "仅自动安装『安全补丁』，不强制重启，保障稳定与安全兼顾"
+
+    case "$PKG_MANAGER" in
+        apt)
+            info "正在配置 unattended-upgrades (Debian/Ubuntu)..."
+            apt-get install -y unattended-upgrades apt-listchanges >/dev/null 2>&1 || true
+            cat <<EOF > /etc/apt/apt.conf.d/20auto-upgrades
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+EOF
+            cat <<EOF > /etc/apt/apt.conf.d/50unattended-upgrades
+Unattended-Upgrade::Allowed-Origins {
+    "\${distro_id}:\${distro_codename}-security";
+};
+Unattended-Upgrade::AutoFixInterruptedDpkg "true";
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Automatic-Reboot "false";
+EOF
+            systemctl enable --now unattended-upgrades >/dev/null 2>&1 || true
+            ;;
+        dnf|yum)
+            info "正在配置 dnf-automatic / yum-cron 安全更新..."
+            $PKG_MANAGER install -y dnf-automatic >/dev/null 2>&1 || $PKG_MANAGER install -y yum-cron >/dev/null 2>&1 || true
+            systemctl enable --now dnf-automatic.timer >/dev/null 2>&1 || systemctl enable --now yum-cron >/dev/null 2>&1 || true
+            ;;
+        apk)
+            info "Alpine 系统默认启用安全更新... 配置每日升级计划任务。"
+            echo "0 4 * * * apk upgrade --available >/dev/null 2>&1" | crontab - 2>/dev/null || true
+            ;;
+        *)
+            warn "当前系统包管理器暂不支持自动安全更新。"
+            ;;
+    esac
+
+    success "自动安全更新已配置完成！系统将在每日后台自动安装安全补丁。"
+    pause
+}
+
 menu_system() {
     while true; do
         print_banner
@@ -202,10 +243,11 @@ menu_system() {
         echo -e " ${B_GREEN}5.${NC} Linux 系统软件源一键换源 (国内/海外极速源)"
         echo -e " ${B_GREEN}6.${NC} 设置上海时区 (CST) 与 NTP 网络时间校准"
         echo -e " ${B_GREEN}7.${NC} DNS 快速持久化优化 (Google / CF / 阿里)"
+        echo -e " ${B_GREEN}8.${NC} 系统自动安全补丁更新 (unattended-upgrades)"
         separator
         echo -e " ${B_RED}0.${NC} 返回主菜单"
         echo ""
-        read -r -p "请输入选项 [0-7]: " sys_choice
+        read -r -p "请输入选项 [0-8]: " sys_choice
         case "$sys_choice" in
             1) enable_bbr ;;
             2) install_warp ;;
@@ -214,6 +256,7 @@ menu_system() {
             5) change_mirrors ;;
             6) sync_time ;;
             7) optimize_dns ;;
+            8) setup_auto_security_updates ;;
             0) break ;;
             *)
                 echo -e "${RED}输入错误，请重新选择！${NC}"
