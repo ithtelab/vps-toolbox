@@ -132,6 +132,22 @@ get_virt_type() {
 
 get_ip_info() {
     local ip
-    ip=$(curl -s4m 3 https://api.ipify.org || curl -s4m 3 https://ip.sb || echo "未知")
-    echo "$ip"
+    # Check IPv4 first
+    ip=$(curl -s4m 2 https://api.ipify.org 2>/dev/null || curl -s4m 2 https://ip.sb 2>/dev/null || curl -s4m 2 https://checkip.amazonaws.com 2>/dev/null)
+    # If IPv4 is missing, check IPv6
+    if [ -z "$ip" ]; then
+        ip=$(curl -s6m 2 https://api64.ipify.org 2>/dev/null || curl -s6m 2 https://ip.sb 2>/dev/null)
+        [ -n "$ip" ] && ip="[IPv6] $ip"
+    fi
+    echo "${ip:-未知}"
+}
+
+get_bbr_status() {
+    local cc
+    cc=$(sysctl net.ipv4.tcp_congestion_control 2>/dev/null | awk '{print $3}')
+    if [[ "$cc" =~ "bbr" ]]; then
+        echo -e "\033[1;32m${cc} (已开启)\033[0m"
+    else
+        echo -e "\033[1;31m${cc:-cubic} (未开启)\033[0m"
+    fi
 }

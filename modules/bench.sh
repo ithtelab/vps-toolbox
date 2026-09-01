@@ -51,7 +51,7 @@ run_geekbench5() {
 
     info "解压中..."
     tar -zxf gb5.tar.gz
-    cd Geekbench-5.4.4-Linux* || cd Geekbench-5.4.4-LinuxARM* || {
+    cd Geekbench-5.4.4-Linux* 2>/dev/null || cd Geekbench-5.4.4-LinuxARM* 2>/dev/null || {
         error "解压失败"
         pause
         return
@@ -105,17 +105,48 @@ run_speedtest() {
     pause
 }
 
-run_yabs_bench() {
+run_global_ping() {
     print_banner
-    echo -e "${B_YELLOW}=== [7] YABS (Yet-Another-Bench-Script) 综合性能测试 ===${NC}"
-    info "正在执行 YABS (含 CPU/磁盘IO/网络)..."
-    curl -sL yabs.sh | bash
+    echo -e "${B_YELLOW}=== [7] 全球主流数据中心延迟 (Ping / LookingGlass) 探测 ===${NC}"
+    info "正在并发探测全球重点机房网络延迟与丢包率..."
+    
+    local targets=(
+        "中国香港 (HK BGP)|hkg.icmp.netcup.net"
+        "日本东京 (Tokyo)|tyo.icmp.netcup.net"
+        "新加坡 (Singapore)|sgp.icmp.netcup.net"
+        "美国西海岸 (Los Angeles)|lax.icmp.netcup.net"
+        "美国东海岸 (New York)|nyc.icmp.netcup.net"
+        "德国法兰克福 (Frankfurt)|fra.icmp.netcup.net"
+    )
+
+    separator
+    printf "%-25s | %-12s | %-10s\n" "测试节点" "平均延迟 (ms)" "丢包率"
+    separator
+
+    for item in "${targets[@]}"; do
+        local name="${item%%|*}"
+        local host="${item##*|}"
+        
+        local ping_out
+        ping_out=$(ping -c 4 -W 2 "$host" 2>/dev/null)
+        if [ -n "$ping_out" ]; then
+            local avg_rtt
+            avg_rtt=$(echo "$ping_out" | awk -F'/' 'END {print $5}')
+            local loss
+            loss=$(echo "$ping_out" | grep -oP '\d+(?=% packet loss)')
+            [ -z "$avg_rtt" ] && avg_rtt="超时"
+            printf "%-25s | %-12s | %-10s\n" "$name" "${avg_rtt} ms" "${loss}%"
+        else
+            printf "%-25s | %-12s | %-10s\n" "$name" "不可达" "100%"
+        fi
+    done
+    separator
     pause
 }
 
 run_fusion_monster() {
     print_banner
-    echo -e "${B_YELLOW}=== [8] 融合怪全套综合测评脚本 ===${NC}"
+    echo -e "${B_YELLOW}=== [8] 融合怪全功能一键深度体检 ===${NC}"
     info "正在加载融合怪综合评测..."
     bash <(curl -sL https://raw.githubusercontent.com/spiritLHLS/ecs/main/ecs.sh) || \
     bash <(curl -sL https://gitlab.com/spiritysdx/ecs/-/raw/main/ecs.sh)
@@ -133,7 +164,7 @@ menu_bench() {
         echo -e " ${B_GREEN}4.${NC} IP 纯净度与流媒体/ChatGPT 解锁测试"
         echo -e " ${B_GREEN}5.${NC} 三网回程路由追踪 (NextTrace/BestTrace)"
         echo -e " ${B_GREEN}6.${NC} 国内三网节点 Speedtest 测速"
-        echo -e " ${B_GREEN}7.${NC} YABS 国际经典性能与磁盘测速"
+        echo -e " ${B_GREEN}7.${NC} 全球主流数据中心延迟 (LookingGlass) 探测"
         echo -e " ${B_GREEN}8.${NC} 融合怪全功能一键深度体检"
         separator
         echo -e " ${B_RED}0.${NC} 返回主菜单"
@@ -146,7 +177,7 @@ menu_bench() {
             4) run_unlock_test ;;
             5) run_route_trace ;;
             6) run_speedtest ;;
-            7) run_yabs_bench ;;
+            7) run_global_ping ;;
             8) run_fusion_monster ;;
             0) break ;;
             *)

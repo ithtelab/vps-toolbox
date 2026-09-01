@@ -7,7 +7,7 @@ change_ssh_port() {
     print_banner
     echo -e "${B_YELLOW}=== [1] 修改 SSH 默认远程连接端口 ===${NC}"
     local current_port
-    current_port=$(ss -tulpn | grep sshd | awk '{print $5}' | awk -F: '{print $NF}' | head -n 1)
+    current_port=$(ss -tulpn | grep ssh | awk '{print $5}' | awk -F: '{print $NF}' | head -n 1)
     [ -z "$current_port" ] && current_port="22"
 
     echo -e "当前 SSH 端口: ${B_CYAN}${current_port}${NC}"
@@ -20,12 +20,30 @@ change_ssh_port() {
         return
     fi
 
-    info "正在修改 SSH 配置文件 /etc/ssh/sshd_config ..."
+    info "正在修改 SSH 配置文件 /etc/ssh/sshd_config 与 sshd_config.d/ ..."
     sed -i '/^#\?Port /d' /etc/ssh/sshd_config
     echo "Port $new_port" >> /etc/ssh/sshd_config
 
+    # Handle Ubuntu 22.10+ / Debian 12 sshd_config.d drop-in
+    if [ -d /etc/ssh/sshd_config.d ]; then
+        echo "Port $new_port" > /etc/ssh/sshd_config.d/custom-port.conf
+    fi
+
     info "正在放行新端口 $new_port ..."
     open_port "$new_port" "tcp"
+
+    # Handle Ubuntu 22.10+ / 24.04 ssh.socket systemd override
+    if systemctl is-active --quiet ssh.socket 2>/dev/null; then
+        info "检测到新版系统 ssh.socket 托管，正在同步配置 socket 端口..."
+        mkdir -p /etc/systemd/system/ssh.socket.d
+        cat <<EOF > /etc/systemd/system/ssh.socket.d/listen.conf
+[Socket]
+ListenStream=
+ListenStream=${new_port}
+EOF
+        systemctl daemon-reload 2>/dev/null || true
+        systemctl restart ssh.socket 2>/dev/null || true
+    fi
 
     if systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null || service sshd restart 2>/dev/null; then
         success "SSH 端口已成功修改为: ${new_port}"
@@ -67,6 +85,7 @@ setup_ssh_key() {
             else
                 sed -i '/^#\?PasswordAuthentication /d' /etc/ssh/sshd_config
                 echo "PasswordAuthentication no" >> /etc/ssh/sshd_config
+                [ -d /etc/ssh/sshd_config.d ] && echo "PasswordAuthentication no" > /etc/ssh/sshd_config.d/auth.conf
                 systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null
                 success "已成功禁用密码登录！现仅支持密钥连接。"
             fi
@@ -74,6 +93,7 @@ setup_ssh_key() {
         3)
             sed -i '/^#\?PasswordAuthentication /d' /etc/ssh/sshd_config
             echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config
+            [ -d /etc/ssh/sshd_config.d ] && rm -f /etc/ssh/sshd_config.d/auth.conf
             systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null
             success "已恢复 SSH 密码登录。"
             ;;
@@ -99,11 +119,13 @@ install_fail2ban() {
             ;;
     esac
 
+    # Debian 12 / Ubuntu 24.04 compatibility using systemd backend
     cat <<EOF > /etc/fail2ban/jail.local
 [DEFAULT]
 bantime = 86400
 findtime = 600
 maxretry = 5
+backend = systemd
 
 [sshd]
 enabled = true
@@ -113,6 +135,55 @@ EOF
     systemctl enable fail2ban >/dev/null 2>&1
     systemctl restart fail2ban >/dev/null 2>&1
     success "Fail2ban 安装并启动完成 (连续输错密码 5 次将自动封禁 24 小时)！"
+    pause
+}
+
+view_fail2ban_status() {
+    print_banner
+    echo -e "${B_YELLOW}=== 查看 Fail2ban 封禁名单与解封 ===${NC}"
+    if ! command -v fail2ban-client >/dev/null 2>&1; then
+        warn "尚未安装 Fail2ban，请先选择安装 Fail2ban！"
+        pause
+        return
+    fi
+
+    info "Fail2ban SSH 防护状态:"
+    fail2ban-client status sshd 2>/dev/null || fail2ban-client status
+    echo ""
+    echo -e " ${B_GREEN}1.${NC} 手动解封某个被拦截的 IP"
+    echo -e " ${B_RED}0.${NC} 返回"
+    echo ""
+    read -r -p "请选择: " fb_op
+    if [ "$fb_op" = "1" ]; then
+        read -r -p "请输入要解封的 IP: " unban_ip
+        if [ -n "$unban_ip" ]; then
+            fail2ban-client set sshd unbanip "$unban_ip" 2>/dev/null || true
+            success "已执行解封指令。"
+        fi
+    fi
+    pause
+}
+
+enable_syn_protection() {
+    print_banner
+    echo -e "${B_YELLOW}=== [5] TCP SYN Flood 洪水攻击与网络参数防爆加固 ===${NC}"
+    info "正在写入 TCP 协议栈防攻击与抗并发参数..."
+    
+    cat <<EOF >> /etc/sysctl.conf
+# Anti-DDoS & TCP Tuning
+net.ipv4.tcp_syncookies = 1
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_fin_timeout = 30
+net.ipv4.tcp_keepalive_time = 1200
+net.ipv4.ip_local_port_range = 10000 65000
+net.ipv4.tcp_max_syn_backlog = 8192
+net.ipv4.tcp_max_tw_buckets = 5000
+net.core.somaxconn = 32768
+net.core.netdev_max_backlog = 32768
+EOF
+
+    sysctl -p >/dev/null 2>&1 || true
+    success "TCP SYN 防护与协议栈高并发加固参数已生效！"
     pause
 }
 
@@ -150,19 +221,23 @@ menu_security() {
         print_banner
         echo -e "${B_CYAN}【 VPS 安全加固与防护管理 】${NC}"
         separator
-        echo -e " ${B_GREEN}1.${NC} 修改 SSH 远程连接端口"
+        echo -e " ${B_GREEN}1.${NC} 修改 SSH 远程连接端口 (支持 Ubuntu 24.04/Debian 12)"
         echo -e " ${B_GREEN}2.${NC} 配置 SSH 密钥登录 / 禁用 Root 密码登录"
         echo -e " ${B_GREEN}3.${NC} 安装并启用 Fail2ban 防暴力破解"
-        echo -e " ${B_GREEN}4.${NC} 防火墙端口放行与已监听端口查看"
+        echo -e " ${B_GREEN}4.${NC} 查看 Fail2ban 封禁黑名单与一键解封 IP"
+        echo -e " ${B_GREEN}5.${NC} 防火墙端口放行与已监听端口查看"
+        echo -e " ${B_GREEN}6.${NC} 开启 TCP SYN Flood 抗攻击与高并发加固"
         separator
         echo -e " ${B_RED}0.${NC} 返回主菜单"
         echo ""
-        read -r -p "请输入选项 [0-4]: " sec_choice
+        read -r -p "请输入选项 [0-6]: " sec_choice
         case "$sec_choice" in
             1) change_ssh_port ;;
             2) setup_ssh_key ;;
             3) install_fail2ban ;;
-            4) manage_firewall ;;
+            4) view_fail2ban_status ;;
+            5) manage_firewall ;;
+            6) enable_syn_protection ;;
             0) break ;;
             *)
                 echo -e "${RED}输入错误，请重新选择！${NC}"

@@ -33,12 +33,21 @@ install_socks5() {
         [ "$CPU_ARCH" = "aarch64" ] && gost_arch="armv8"
         [ "$CPU_ARCH" = "armv7" ] && gost_arch="armv7"
         
-        wget -q --no-check-certificate -O /tmp/gost.gz "https://github.com/go-gost/gost/releases/download/v3.0.0-nightly.20240125/gost_3.0.0-nightly.20240125_linux_${gost_arch}.tar.gz" || \
-        wget -q --no-check-certificate -O /tmp/gost.gz "https://ghproxy.com/https://github.com/go-gost/gost/releases/download/v3.0.0-nightly.20240125/gost_3.0.0-nightly.20240125_linux_${gost_arch}.tar.gz"
-        
-        tar -zxf /tmp/gost.gz -C /usr/local/bin/ gost 2>/dev/null || true
-        chmod +x "$gost_bin"
-        rm -f /tmp/gost.gz
+        local gost_urls=(
+            "https://github.com/go-gost/gost/releases/download/v3.0.0-rc10/gost_3.0.0-rc10_linux_${gost_arch}.tar.gz"
+            "https://ghproxy.com/https://github.com/go-gost/gost/releases/download/v3.0.0-rc10/gost_3.0.0-rc10_linux_${gost_arch}.tar.gz"
+            "https://github.com/ginuerzh/gost/releases/download/v2.11.5/gost-linux-${gost_arch}-2.11.5.gz"
+        )
+
+        for u in "${gost_urls[@]}"; do
+            if wget -q --no-check-certificate -O /tmp/gost.tar.gz "$u"; then
+                tar -zxf /tmp/gost.tar.gz -C /usr/local/bin/ gost 2>/dev/null || gzip -d -c /tmp/gost.tar.gz > /usr/local/bin/gost 2>/dev/null || true
+                [ -f "$gost_bin" ] && break
+            fi
+        done
+
+        chmod +x "$gost_bin" 2>/dev/null || true
+        rm -f /tmp/gost.tar.gz
     fi
 
     # Create systemd service
@@ -112,12 +121,19 @@ install_clash_party() {
     [ "$CPU_ARCH" = "aarch64" ] && m_arch="arm64"
 
     info "正在拉取 Mihomo 最新核心..."
-    wget -q --no-check-certificate -O /tmp/mihomo.gz "https://github.com/MetaCubeX/mihomo/releases/download/v1.18.7/mihomo-linux-${m_arch}-v1.18.7.gz" || \
-    wget -q --no-check-certificate -O /tmp/mihomo.gz "https://ghproxy.com/https://github.com/MetaCubeX/mihomo/releases/download/v1.18.7/mihomo-linux-${m_arch}-v1.18.7.gz"
+    local mihomo_urls=(
+        "https://github.com/MetaCubeX/mihomo/releases/download/v1.18.7/mihomo-linux-${m_arch}-v1.18.7.gz"
+        "https://ghproxy.com/https://github.com/MetaCubeX/mihomo/releases/download/v1.18.7/mihomo-linux-${m_arch}-v1.18.7.gz"
+    )
 
-    gzip -d /tmp/mihomo.gz -c > "$mihomo_bin" 2>/dev/null || true
-    chmod +x "$mihomo_bin"
-    rm -f /tmp/mihomo.gz
+    for mu in "${mihomo_urls[@]}"; do
+        if wget -q --no-check-certificate -O /tmp/mihomo.gz "$mu"; then
+            gzip -d /tmp/mihomo.gz -c > "$mihomo_bin" 2>/dev/null || true
+            chmod +x "$mihomo_bin"
+            rm -f /tmp/mihomo.gz
+            [ -f "$mihomo_bin" ] && break
+        fi
+    done
 
     # Write Mihomo config
     cat <<EOF > ${config_dir}/config.yaml

@@ -72,7 +72,6 @@ init_environment() {
     check_root
     detect_system
     install_dependencies
-    # Ensure hte shortcut exists
     if [ ! -f /usr/local/bin/hte ] && [ -f "${TOOLBOX_DIR}/main.sh" ]; then
         ln -sf "${TOOLBOX_DIR}/main.sh" /usr/local/bin/hte 2>/dev/null || true
     fi
@@ -115,13 +114,14 @@ main_menu() {
         echo -e " ${WHITE}系统:${NC} ${OS_NAME} ${OS_VERSION} (${CPU_ARCH}) | ${WHITE}虚拟化:${NC} $(get_virt_type) | ${WHITE}内核:${NC} $(uname -r | cut -d- -f1)"
         echo -e " ${WHITE}CPU:${NC}  $(get_cpu_info)"
         echo -e " ${WHITE}内存:${NC} $(get_mem_info) | ${WHITE}Swap:${NC} $(get_swap_info) | ${WHITE}磁盘:${NC} $(get_disk_info)"
+        echo -e " ${WHITE}网络:${NC} IP $(get_ip_info) | ${WHITE}BBR加速:${NC} $(get_bbr_status)"
         double_separator
 
-        echo -e " ${B_GREEN}[1]${NC} ${B_WHITE}服务器性能与网络综合测评${NC}  ${PURPLE}(NQ, TQ, Geekbench 5, 流媒体, 路由)${NC}"
+        echo -e " ${B_GREEN}[1]${NC} ${B_WHITE}服务器性能与网络综合测评${NC}  ${PURPLE}(NQ, TQ, Geekbench 5, 流媒体, 路由, Ping)${NC}"
         echo -e " ${B_GREEN}[2]${NC} ${B_WHITE}代理与穿透/转发服务搭建${NC}   ${PURPLE}(Socks5 一键, Clash Party/Mihomo, Realm)${NC}"
-        echo -e " ${B_GREEN}[3]${NC} ${B_WHITE}系统底层与网络参数优化${NC}   ${PURPLE}(BBR 加速, Swap 调整, 极速换源, DNS)${NC}"
+        echo -e " ${B_GREEN}[3]${NC} ${B_WHITE}系统优化 / WARP / 一键DD重装${NC} ${PURPLE}(WARP双栈, DD纯净重装, BBR全家桶, Swap, DNS)${NC}"
         echo -e " ${B_GREEN}[4]${NC} ${B_WHITE}Docker 与常用运维环境部署${NC} ${PURPLE}(Docker, 哪吒探针, 1Panel, SSL证书)${NC}"
-        echo -e " ${B_GREEN}[5]${NC} ${B_WHITE}VPS 安全加固与防火墙管理${NC}  ${PURPLE}(SSH 改端口, 密钥登录, Fail2ban, 端口放行)${NC}"
+        echo -e " ${B_GREEN}[5]${NC} ${B_WHITE}VPS 安全加固与防护管理${NC}    ${PURPLE}(SSH改端口, 密钥登录, Fail2ban解封, 防SYN攻击)${NC}"
         echo -e " ${B_GREEN}[6]${NC} ${B_WHITE}系统深度清理与日常监控${NC}   ${PURPLE}(垃圾日志清理, 硬件查看, htop/iftop)${NC}"
         separator
         echo -e " ${B_YELLOW}[u]${NC} 更新脚本自身                  ${B_RED}[0]${NC} 退出工具箱"
