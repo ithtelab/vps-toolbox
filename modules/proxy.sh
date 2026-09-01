@@ -32,10 +32,16 @@ install_socks5() {
         local gost_arch="amd64"
         [ "$CPU_ARCH" = "aarch64" ] && gost_arch="armv8"
         [ "$CPU_ARCH" = "armv7" ] && gost_arch="armv7"
-        
+
+        # Attempt to resolve the current stable release tag (Gost v3)
+        local gost_tag
+        gost_tag=$(curl -sL --connect-timeout 6 --max-time 15 "https://api.github.com/repos/go-gost/gost/releases/latest" 2>/dev/null | awk -F'"' '/"tag_name"/ {print $4}')
+        [ -z "$gost_tag" ] && gost_tag="v3.0.0-rc10"
+
         local gost_urls=(
+            "https://github.com/go-gost/gost/releases/download/${gost_tag}/gost_${gost_tag#v}_linux_${gost_arch}.tar.gz"
+            "https://ghproxy.com/https://github.com/go-gost/gost/releases/download/${gost_tag}/gost_${gost_tag#v}_linux_${gost_arch}.tar.gz"
             "https://github.com/go-gost/gost/releases/download/v3.0.0-rc10/gost_3.0.0-rc10_linux_${gost_arch}.tar.gz"
-            "https://ghproxy.com/https://github.com/go-gost/gost/releases/download/v3.0.0-rc10/gost_3.0.0-rc10_linux_${gost_arch}.tar.gz"
             "https://github.com/ginuerzh/gost/releases/download/v2.11.5/gost-linux-${gost_arch}-2.11.5.gz"
         )
 
@@ -124,9 +130,15 @@ install_clash_party() {
     [ "$CPU_ARCH" = "aarch64" ] && m_arch="arm64"
 
     info "正在拉取 Mihomo 最新核心..."
+    # Resolve the current stable Mihomo (Clash-Meta) release tag, fallback to pinned stable
+    local mihomo_tag
+    mihomo_tag=$(curl -sL --connect-timeout 6 --max-time 15 "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" 2>/dev/null | awk -F'"' '/"tag_name"/ {print $4}')
+    [ -z "$mihomo_tag" ] && mihomo_tag="v1.18.7"
+
     local mihomo_urls=(
+        "https://github.com/MetaCubeX/mihomo/releases/download/${mihomo_tag}/mihomo-linux-${m_arch}-${mihomo_tag}.gz"
+        "https://ghproxy.com/https://github.com/MetaCubeX/mihomo/releases/download/${mihomo_tag}/mihomo-linux-${m_arch}-${mihomo_tag}.gz"
         "https://github.com/MetaCubeX/mihomo/releases/download/v1.18.7/mihomo-linux-${m_arch}-v1.18.7.gz"
-        "https://ghproxy.com/https://github.com/MetaCubeX/mihomo/releases/download/v1.18.7/mihomo-linux-${m_arch}-v1.18.7.gz"
     )
 
     for mu in "${mihomo_urls[@]}"; do
