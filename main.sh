@@ -99,9 +99,6 @@ load_modules() {
 
 load_modules
 
-# Version marker used to detect stale installs & trigger forced self-update
-export HTE_VERSION="2026.09.02"
-
 # Global Init
 init_environment() {
     check_root
@@ -109,25 +106,6 @@ init_environment() {
     install_dependencies
     if [ ! -f /usr/local/bin/hte ] && [ -f "${TOOLBOX_DIR}/main.sh" ]; then
         ln -sf "${TOOLBOX_DIR}/main.sh" /usr/local/bin/hte 2>/dev/null || true
-    fi
-
-    # One-shot self-heal: detect a stale install that predates the live hot-reload engine.
-    # Guarded by HTE_SELFHEAL_DONE (inherited across exec) so it can NEVER loop infinitely.
-    if [ -z "${HTE_SELFHEAL_DONE:-}" ] && grep -q "HTE_VERSION" "${TOOLBOX_DIR}/main.sh" 2>/dev/null; then
-        local disk_version
-        disk_version=$(grep -o 'HTE_VERSION="[^"]*"' "${TOOLBOX_DIR}/main.sh" 2>/dev/null)
-        disk_version="${disk_version#HTE_VERSION=\"}"
-        disk_version="${disk_version%\"}"
-        # Only self-heal when we got a clean single version token that differs
-        case "$disk_version" in
-            *\"*|*[^0-9.]*) : ;;               # corrupt/partial marker -> ignore
-            "$HTE_VERSION") : ;;                # match -> no action
-            *)
-                info "检测到本地脚本版本 (${disk_version}) 与最新版本 (${HTE_VERSION}) 不一致，正在自动修复..."
-                export HTE_SELFHEAL_DONE="1"
-                update_toolbox
-                ;;
-        esac
     fi
 }
 
