@@ -7,7 +7,7 @@ change_ssh_port() {
     print_banner
     echo -e "${B_YELLOW}=== [1] 修改 SSH 默认远程连接端口 ===${NC}"
     local current_port
-    current_port=$(ss -tulpn | grep ssh | awk '{print $5}' | awk -F: '{print $NF}' | head -n 1)
+    current_port=$(ss -tulpn 2>/dev/null | grep -E '(sshd|sshd:)' | grep LISTEN | awk '{print $5}' | awk -F: '{print $NF}' | sort -u | head -n 1)
     [ -z "$current_port" ] && current_port="22"
 
     echo -e "当前 SSH 端口: ${B_CYAN}${current_port}${NC}"
@@ -169,6 +169,21 @@ enable_syn_protection() {
     echo -e "${B_YELLOW}=== [5] TCP SYN Flood 洪水攻击与网络参数防爆加固 ===${NC}"
     info "正在写入 TCP 协议栈防攻击与抗并发参数..."
     
+    # Strip existing keys first to avoid accumulating duplicate lines on re-runs
+    for key in \
+        "net.ipv4.tcp_syncookies" \
+        "net.ipv4.tcp_tw_reuse" \
+        "net.ipv4.tcp_fin_timeout" \
+        "net.ipv4.tcp_keepalive_time" \
+        "net.ipv4.ip_local_port_range" \
+        "net.ipv4.tcp_max_syn_backlog" \
+        "net.ipv4.tcp_max_tw_buckets" \
+        "net.core.somaxconn" \
+        "net.core.netdev_max_backlog"
+    do
+        sed -i "/^${key}/d" /etc/sysctl.conf
+    done
+
     cat <<EOF >> /etc/sysctl.conf
 # Anti-DDoS & TCP Tuning
 net.ipv4.tcp_syncookies = 1

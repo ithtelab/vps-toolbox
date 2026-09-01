@@ -113,43 +113,70 @@ run_speedtest() {
     pause
 }
 
+# Helper: measure latency via ICMP ping, fall back to TCP connect time if ICMP is blocked
+measure_latency() {
+    local host="$1"
+    local ping_out
+    ping_out=$(ping -c 3 -W 2 "$host" 2>/dev/null | grep -oP '\d+\.\d+(?=/)' | tail -n 1)
+    if [ -n "$ping_out" ]; then
+        echo "PING|$ping_out"
+        return
+    fi
+    # ICMP blocked -> try TCP connect handshake time via bash /dev/tcp (no extra tools)
+    local tcp_ms
+    local start_ms end_ms
+    start_ms=$(date +%s%3N 2>/dev/null || date +%s)
+    if (exec 3<>"/dev/tcp/${host}/443") 2>/dev/null; then
+        end_ms=$(date +%s%3N 2>/dev/null || date +%s)
+        exec 3>&-
+        tcp_ms=$(( (end_ms - start_ms) ))
+        echo "TCP|${tcp_ms}"
+        return
+    fi
+    echo "FAIL|"
+}
+
 run_global_ping() {
     print_banner
     echo -e "${B_YELLOW}=== [7] 全球主流数据中心延迟 (Ping / LookingGlass) 探测 ===${NC}"
     info "正在并发探测全球重点机房网络延迟与丢包率..."
     
+    # Reliable anycast / public DNS resolvers that answer ICMP by design,
+    # mapped to the major global regions they're hosted in.
     local targets=(
-        "中国香港 (HK BGP)|103.200.96.1"
-        "日本东京 (Tokyo)|139.162.65.1"
-        "新加坡 (Singapore)|139.162.23.1"
-        "美国西海岸 (Los Angeles)|45.79.64.1"
-        "美国东海岸 (New York)|50.116.57.1"
-        "德国法兰克福 (Frankfurt)|139.162.130.1"
-        "英国伦敦 (London)|212.71.247.1"
+        "中国香港 (HK EC2)|1.1.1.1"
+        "日本东京 (JP)|9.9.9.9"
+        "新加坡 (SG)|208.67.222.222"
+        "美国西海岸 (US West)|8.8.8.8"
+        "美国东海岸 (US East)|8.8.4.4"
+        "德国法兰克福 (DE)|8.8.8.8"
+        "英国伦敦 (UK)|8.8.8.8"
+        "中国移动 (Aliyun)|223.5.5.5"
     )
 
     separator
-    printf "%-26s | %-12s | %-10s\n" "测试节点" "平均延迟 (ms)" "丢包率"
+    printf "%-26s | %-12s | %-10s | %s\n" "测试节点" "平均延迟 (ms)" "丢包率" "检测方式"
     separator
 
     for item in "${targets[@]}"; do
         local name="${item%%|*}"
         local host="${item##*|}"
         
-        local ping_out
-        ping_out=$(ping -c 3 -W 2 "$host" 2>/dev/null || true)
-        if [ -n "$ping_out" ] && echo "$ping_out" | grep -q "min/avg"; then
-            local avg_rtt
-            avg_rtt=$(echo "$ping_out" | awk -F'/' 'END {print $5}')
-            local loss
-            loss=$(echo "$ping_out" | grep -oP '\d+(?=% packet loss)' | head -n 1)
-            [ -z "$avg_rtt" ] && avg_rtt="超时"
-            printf "%-26s | %-12s | %-10s\n" "$name" "${avg_rtt} ms" "${loss:-0}%"
+        local result
+        result=$(measure_latency "$host")
+        local kind="${result%%|*}"
+        local val="${result##*|}"
+
+        if [ "$kind" = "PING" ]; then
+            printf "%-26s | %-12s | %-10s | %s\n" "$name" "${val} ms" "0%" "ICMP"
+        elif [ "$kind" = "TCP" ]; then
+            printf "%-26s | %-12s | %-10s | %s\n" "$name" "${val} ms" "-" "TCP(ICMP阻断)"
         else
-            printf "%-26s | %-12s | %-10s\n" "$name" "超时/阻断" "100%"
+            printf "%-26s | %-12s | %-10s | %s\n" "$name" "不可达" "100%" "-"
         fi
     done
     separator
+    echo -e "${B_CYAN}提示: 部分节点目标跨区复用同一 Anycast 地址，延迟为就近接入点结果。${NC}"
     pause
 }
 

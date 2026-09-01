@@ -97,6 +97,9 @@ run_remote_script() {
            wget -q --no-check-certificate --timeout=15 "$url" -O "$tmp_script" 2>/dev/null; then
             # Verify the downloaded file is a valid text/bash script and NOT an HTML / Cloudflare Challenge page
             if [ -s "$tmp_script" ] && ! head -n 5 "$tmp_script" | grep -qiE "<!DOCTYPE|<html|<head|Just a moment"; then
+                # Normalize line endings & strip UTF-8 BOM to avoid bash parsing errors
+                sed -i 's/\r$//' "$tmp_script" 2>/dev/null || true
+                sed -i '1s/^\xEF\xBB\xBF//' "$tmp_script" 2>/dev/null || true
                 chmod +x "$tmp_script"
                 bash "$tmp_script"
                 local exit_code=$?

@@ -66,16 +66,24 @@ launch_realtime_monitor() {
         1)
             if ! command -v htop >/dev/null 2>&1; then
                 info "正在安装 htop ..."
-                [ "$PKG_MANAGER" = "apt" ] && apt-get install -y htop >/dev/null 2>&1
-                [ "$PKG_MANAGER" = "yum" ] || [ "$PKG_MANAGER" = "dnf" ] && $PKG_MANAGER install -y htop >/dev/null 2>&1
+                case "$PKG_MANAGER" in
+                    apt) apt-get install -y htop >/dev/null 2>&1 ;;
+                    dnf|yum) $PKG_MANAGER install -y htop >/dev/null 2>&1 ;;
+                    apk) apk add htop >/dev/null 2>&1 ;;
+                    pacman) pacman -S --noconfirm htop >/dev/null 2>&1 ;;
+                esac
             fi
             htop
             ;;
         2)
             if ! command -v iftop >/dev/null 2>&1; then
                 info "正在安装 iftop ..."
-                [ "$PKG_MANAGER" = "apt" ] && apt-get install -y iftop >/dev/null 2>&1
-                [ "$PKG_MANAGER" = "yum" ] || [ "$PKG_MANAGER" = "dnf" ] && $PKG_MANAGER install -y iftop >/dev/null 2>&1
+                case "$PKG_MANAGER" in
+                    apt) apt-get install -y iftop >/dev/null 2>&1 ;;
+                    dnf|yum) $PKG_MANAGER install -y iftop >/dev/null 2>&1 ;;
+                    apk) apk add iftop >/dev/null 2>&1 ;;
+                    pacman) pacman -S --noconfirm iftop >/dev/null 2>&1 ;;
+                esac
             fi
             iftop
             ;;

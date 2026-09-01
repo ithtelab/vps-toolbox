@@ -42,7 +42,10 @@ install_socks5() {
         for u in "${gost_urls[@]}"; do
             if wget -q --no-check-certificate -O /tmp/gost.tar.gz "$u"; then
                 tar -zxf /tmp/gost.tar.gz -C /usr/local/bin/ gost 2>/dev/null || gzip -d -c /tmp/gost.tar.gz > /usr/local/bin/gost 2>/dev/null || true
-                [ -f "$gost_bin" ] && break
+                # Verify binary exists and is non-empty before accepting
+                if [ -f "$gost_bin" ] && [ -s "$gost_bin" ]; then
+                    break
+                fi
             fi
         done
 
@@ -131,7 +134,10 @@ install_clash_party() {
             gzip -d /tmp/mihomo.gz -c > "$mihomo_bin" 2>/dev/null || true
             chmod +x "$mihomo_bin"
             rm -f /tmp/mihomo.gz
-            [ -f "$mihomo_bin" ] && break
+            # Verify binary exists and is non-empty before accepting
+            if [ -f "$mihomo_bin" ] && [ -s "$mihomo_bin" ]; then
+                break
+            fi
         fi
     done
 
