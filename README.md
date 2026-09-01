@@ -1,4 +1,4 @@
-# Linux VPS 多功能综合运维与测评工具箱 (VPS All-in-One Toolbox)
+# 黑天鹅 Linux 多功能综合运维与测评工具箱 (HTE Linux Toolbox)
 
 这是一个专为 Linux 服务器（VPS / 独立服务器）量身打造的**现代化、模块化、彩色交互式多功能工具箱**。支持 Debian、Ubuntu、CentOS、Rocky Linux、AlmaLinux、Alpine 与 Arch Linux。
 
@@ -72,4 +72,4 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ithtelab/vps-toolbox/main/ma
 bash <(curl -fsSL https://ghproxy.com/https://raw.githubusercontent.com/ithtelab/vps-toolbox/main/main.sh)
 ```
 
-> **快捷指令提示**：首次运行后，以后在终端任何目录下直接输入 `toolbox` 即可秒开工具箱！
+> **⚡ 快捷呼出方式**：首次运行完成后，以后在 Linux 终端任意位置直接输入 `hte` 即可秒开工具箱！

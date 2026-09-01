@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Linux VPS All-in-One Toolbox (多功能服务器一体化综合工具箱)
+# 黑天鹅 Linux 多功能综合运维与测评工具箱 (HTE Linux All-in-One Toolbox)
 # ==============================================================================
 
 set -e
@@ -15,7 +15,7 @@ if [ -d "$(dirname "${BASH_SOURCE[0]}")/utils" ]; then
     BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 else
     # Running remotely via curl / pipe / process substitution
-    echo -e "\033[1;34m[INFO]\033[0m 正在初始化 VPS 多功能工具箱运行环境..."
+    echo -e "\033[1;34m[INFO]\033[0m 正在初始化黑天鹅 Linux 工具箱运行环境..."
     mkdir -p "${TOOLBOX_DIR}/utils" "${TOOLBOX_DIR}/modules"
 
     files=(
@@ -38,6 +38,8 @@ else
     done
 
     chmod +x "${TOOLBOX_DIR}/main.sh"
+    # Create global shortcut 'hte' and compatible alias 'toolbox'
+    ln -sf "${TOOLBOX_DIR}/main.sh" /usr/local/bin/hte 2>/dev/null || true
     ln -sf "${TOOLBOX_DIR}/main.sh" /usr/local/bin/toolbox 2>/dev/null || true
 
     BASE_DIR="${TOOLBOX_DIR}"
@@ -70,6 +72,10 @@ init_environment() {
     check_root
     detect_system
     install_dependencies
+    # Ensure hte shortcut exists
+    if [ ! -f /usr/local/bin/hte ] && [ -f "${TOOLBOX_DIR}/main.sh" ]; then
+        ln -sf "${TOOLBOX_DIR}/main.sh" /usr/local/bin/hte 2>/dev/null || true
+    fi
 }
 
 # Self update
@@ -94,8 +100,9 @@ update_toolbox() {
         fi
     done
     chmod +x "${TOOLBOX_DIR}/main.sh"
+    ln -sf "${TOOLBOX_DIR}/main.sh" /usr/local/bin/hte 2>/dev/null || true
     ln -sf "${TOOLBOX_DIR}/main.sh" /usr/local/bin/toolbox 2>/dev/null || true
-    success "工具箱已更新为最新版本！"
+    success "黑天鹅工具箱已更新为最新版本！"
     pause
 }
 
@@ -146,7 +153,7 @@ main_menu() {
                 ;;
             0)
                 echo ""
-                echo -e "${B_GREEN}感谢使用 Linux VPS 多功能一体化工具箱，再见！${NC}"
+                echo -e "${B_GREEN}感谢使用 黑天鹅 Linux 多功能一体化工具箱，再见！${NC}"
                 exit 0
                 ;;
             *)
