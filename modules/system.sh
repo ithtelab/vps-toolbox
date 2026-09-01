@@ -37,8 +37,9 @@ enable_bbr() {
             ;;
         2)
             info "正在拉取 Teddysun / Ylx 经典 BBR 综合管理脚本..."
-            bash <(curl -sL https://raw.githubusercontent.com/teddysun/across/master/bbr.sh) || \
-            bash <(curl -sL https://raw.githubusercontent.com/ylx2016/Linux-NetSpeed/master/tcp.sh)
+            run_remote_script \
+                "https://raw.githubusercontent.com/teddysun/across/master/bbr.sh" \
+                "https://raw.githubusercontent.com/ylx2016/Linux-NetSpeed/master/tcp.sh"
             ;;
         *)
             return
@@ -51,8 +52,10 @@ install_warp() {
     print_banner
     echo -e "${B_YELLOW}=== [2] Cloudflare WARP 一键双栈与 IP 解锁 ===${NC}"
     info "正在拉取 fscarmen / P3TERX WARP 官方一键脚本..."
-    bash <(curl -sSL https://raw.githubusercontent.com/fscarmen/warp/main/menu.sh) || \
-    bash <(curl -sSL https://gitlab.com/fscarmen/warp/-/raw/main/menu.sh)
+    run_remote_script \
+        "https://cdn.jsdelivr.net/gh/fscarmen/warp@main/menu.sh" \
+        "https://raw.githubusercontent.com/fscarmen/warp/main/menu.sh" \
+        "https://ghproxy.com/https://raw.githubusercontent.com/fscarmen/warp/main/menu.sh"
     pause
 }
 
@@ -69,8 +72,10 @@ reinstall_system_dd() {
     fi
 
     info "正在加载 leitbogioro / reinstall 纯净 DD 重装脚本..."
-    bash <(curl -sSL https://raw.githubusercontent.com/leitbogioro/Tools/master/Linux_reinstall/InstallNET.sh) || \
-    bash <(curl -sSL https://ghproxy.com/https://raw.githubusercontent.com/leitbogioro/Tools/master/Linux_reinstall/InstallNET.sh)
+    run_remote_script \
+        "https://cdn.jsdelivr.net/gh/leitbogioro/Tools@master/Linux_reinstall/InstallNET.sh" \
+        "https://raw.githubusercontent.com/leitbogioro/Tools/master/Linux_reinstall/InstallNET.sh" \
+        "https://ghproxy.com/https://raw.githubusercontent.com/leitbogioro/Tools/master/Linux_reinstall/InstallNET.sh"
     pause
 }
 
@@ -130,7 +135,9 @@ change_mirrors() {
     print_banner
     echo -e "${B_YELLOW}=== [5] Linux 系统软件源一键换源 (APT/YUM) ===${NC}"
     info "正在加载 SuperManito 经典一键换源脚本..."
-    bash <(curl -sSL https://linuxmirrors.cn/main.sh)
+    run_remote_script \
+        "https://linuxmirrors.cn/main.sh" \
+        "https://raw.githubusercontent.com/SuperManito/LinuxMirrors/main/ChangeMirrors.sh"
     pause
 }
 

@@ -26,7 +26,10 @@ install_nezha() {
     print_banner
     echo -e "${B_YELLOW}=== [2] 哪吒探针 (Nezha) 一键安装管理 ===${NC}"
     info "正在拉取哪吒探针官方安装脚本..."
-    curl -L https://raw.githubusercontent.com/nezhahq/scripts/main/install.sh -o nezha.sh && chmod +x nezha.sh && ./nezha.sh
+    run_remote_script \
+        "https://cdn.jsdelivr.net/gh/nezhahq/scripts@main/install.sh" \
+        "https://raw.githubusercontent.com/nezhahq/scripts/main/install.sh" \
+        "https://ghproxy.com/https://raw.githubusercontent.com/nezhahq/scripts/main/install.sh"
     pause
 }
 
@@ -34,7 +37,8 @@ install_1panel() {
     print_banner
     echo -e "${B_YELLOW}=== [3] 1Panel 新一代现代化运维面板 ===${NC}"
     info "正在拉取 1Panel 官方安装脚本..."
-    curl -sSL https://resource.fit2cloud.com/1panel/package/quick_start.sh -o quick_start.sh && bash quick_start.sh
+    run_remote_script \
+        "https://resource.fit2cloud.com/1panel/package/quick_start.sh"
     pause
 }
 

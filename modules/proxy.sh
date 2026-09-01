@@ -187,8 +187,10 @@ install_realm_forward() {
     print_banner
     echo -e "${B_YELLOW}=== [3] Realm 高性能极速端口转发 ===${NC}"
     info "正在安装 Realm 端口转发工具..."
-    bash <(curl -sL https://raw.githubusercontent.com/spiritLHLS/realm-one-click/main/realm.sh) || \
-    bash <(curl -sL https://ghproxy.com/https://raw.githubusercontent.com/spiritLHLS/realm-one-click/main/realm.sh)
+    run_remote_script \
+        "https://cdn.jsdelivr.net/gh/spiritLHLS/realm-one-click@main/realm.sh" \
+        "https://raw.githubusercontent.com/spiritLHLS/realm-one-click/main/realm.sh" \
+        "https://ghproxy.com/https://raw.githubusercontent.com/spiritLHLS/realm-one-click/main/realm.sh"
     pause
 }
 
@@ -196,8 +198,9 @@ install_singbox_vless() {
     print_banner
     echo -e "${B_YELLOW}=== [4] VLESS-Reality / Hysteria 2 官方自动化脚本 ===${NC}"
     info "正在调取前沿主流协议脚本菜单..."
-    bash <(curl -fsSL https://raw.githubusercontent.com/fscarmen/sing-box/main/sing-box.sh) || \
-    bash <(curl -fsSL https://raw.githubusercontent.com/mack-a/v2ray-agent/master/install.sh)
+    run_remote_script \
+        "https://raw.githubusercontent.com/fscarmen/sing-box/main/sing-box.sh" \
+        "https://raw.githubusercontent.com/mack-a/v2ray-agent/master/install.sh"
     pause
 }
 

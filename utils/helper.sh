@@ -6,7 +6,7 @@
 # Check Root Privileges
 check_root() {
     if [ "$(id -u)" -ne 0 ]; then
-        echo -e "${RED}[ERROR] 当前脚本需要 root 权限运行，请使用 sudo -i 或切换为 root 用户重试。${NC}"
+        echo -e "\033[0;31m[ERROR] 当前脚本需要 root 权限运行，请使用 sudo -i 或切换为 root 用户重试。\033[0m"
         exit 1
     fi
 }
@@ -80,4 +80,33 @@ open_port() {
     if command -v iptables >/dev/null 2>&1; then
         iptables -I INPUT -p "$proto" --dport "$port" -j ACCEPT 2>/dev/null || true
     fi
+}
+
+# Safely download and run a remote script with fallback mirrors
+# Prevents executing Cloudflare Challenge HTML / WAF error pages
+run_remote_script() {
+    local tmp_script="/tmp/remote_script_$$.sh"
+    rm -f "$tmp_script"
+
+    for url in "$@"; do
+        if [ -z "$url" ]; then
+            continue
+        fi
+
+        if curl -fsSL --connect-timeout 6 --max-time 60 "$url" -o "$tmp_script" 2>/dev/null || \
+           wget -q --no-check-certificate --timeout=15 "$url" -O "$tmp_script" 2>/dev/null; then
+            # Verify the downloaded file is a valid text/bash script and NOT an HTML / Cloudflare Challenge page
+            if [ -s "$tmp_script" ] && ! head -n 5 "$tmp_script" | grep -qiE "<!DOCTYPE|<html|<head|Just a moment"; then
+                chmod +x "$tmp_script"
+                bash "$tmp_script"
+                local exit_code=$?
+                rm -f "$tmp_script"
+                return $exit_code
+            fi
+        fi
+    done
+
+    error "远程脚本拉取失败（可能因节点网络受阻或被上游拦截），请稍后重试！"
+    rm -f "$tmp_script"
+    return 1
 }

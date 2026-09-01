@@ -7,8 +7,10 @@ run_node_quality() {
     print_banner
     echo -e "${B_YELLOW}=== [1] NodeQuality (NQ) 综合质量测试 ===${NC}"
     info "正在拉取并执行 NodeQuality 权威测评..."
-    bash <(curl -sL https://raw.githubusercontent.com/Aniverse/inexistence/master/tools/nodequality.sh) || \
-    bash <(curl -sL https://cdn.jsdelivr.net/gh/Aniverse/inexistence@master/tools/nodequality.sh)
+    run_remote_script \
+        "https://cdn.jsdelivr.net/gh/Aniverse/inexistence@master/tools/nodequality.sh" \
+        "https://raw.githubusercontent.com/Aniverse/inexistence/master/tools/nodequality.sh" \
+        "https://ghproxy.com/https://raw.githubusercontent.com/Aniverse/inexistence/master/tools/nodequality.sh"
     pause
 }
 
@@ -16,8 +18,10 @@ run_tcp_quality() {
     print_banner
     echo -e "${B_YELLOW}=== [2] TcpQuality (TQ) 三网回程与 TCP 质量测试 ===${NC}"
     info "正在拉取并执行 TcpQuality 网络质量测试..."
-    bash <(curl -sL https://raw.githubusercontent.com/Aniverse/inexistence/master/tools/tcpquality.sh) || \
-    bash <(curl -sL https://cdn.jsdelivr.net/gh/Aniverse/inexistence@master/tools/tcpquality.sh)
+    run_remote_script \
+        "https://cdn.jsdelivr.net/gh/Aniverse/inexistence@master/tools/tcpquality.sh" \
+        "https://raw.githubusercontent.com/Aniverse/inexistence/master/tools/tcpquality.sh" \
+        "https://ghproxy.com/https://raw.githubusercontent.com/Aniverse/inexistence/master/tools/tcpquality.sh"
     pause
 }
 
@@ -82,8 +86,10 @@ run_unlock_test() {
     print_banner
     echo -e "${B_YELLOW}=== [4] IP 纯净度与流媒体解锁综合检测 ===${NC}"
     info "正在启动流媒体与 AI 服务解锁检测..."
-    bash <(curl -L -s media.ispvps.com) || \
-    bash <(curl -L -s https://raw.githubusercontent.com/lmc999/RegionRestrictionCheck/master/check.sh)
+    run_remote_script \
+        "https://cdn.jsdelivr.net/gh/lmc999/RegionRestrictionCheck@master/check.sh" \
+        "https://raw.githubusercontent.com/lmc999/RegionRestrictionCheck/master/check.sh" \
+        "https://ghproxy.com/https://raw.githubusercontent.com/lmc999/RegionRestrictionCheck/master/check.sh"
     pause
 }
 
@@ -91,8 +97,9 @@ run_route_trace() {
     print_banner
     echo -e "${B_YELLOW}=== [5] 三网回程路由追踪 (NextTrace) ===${NC}"
     info "正在调用 NextTrace 快速追踪电信、联通、移动、教育网回程路由..."
-    bash <(curl -N -sL https://raw.githubusercontent.com/sjlleo/nexttrace/main/nt_auto.sh) || \
-    bash <(curl -N -sL https://ghproxy.com/https://raw.githubusercontent.com/sjlleo/nexttrace/main/nt_auto.sh)
+    run_remote_script \
+        "https://raw.githubusercontent.com/sjlleo/nexttrace/main/nt_auto.sh" \
+        "https://ghproxy.com/https://raw.githubusercontent.com/sjlleo/nexttrace/main/nt_auto.sh"
     pause
 }
 
@@ -100,8 +107,9 @@ run_speedtest() {
     print_banner
     echo -e "${B_YELLOW}=== [6] 国内三网多节点 Speedtest 测速 ===${NC}"
     info "正在启动多节点网络测速脚本..."
-    bash <(curl -sL https://raw.githubusercontent.com/i-abc/Speedtest/main/speedtest.sh) || \
-    bash <(curl -sL https://bench.im/speedtest)
+    run_remote_script \
+        "https://raw.githubusercontent.com/i-abc/Speedtest/main/speedtest.sh" \
+        "https://ghproxy.com/https://raw.githubusercontent.com/i-abc/Speedtest/main/speedtest.sh"
     pause
 }
 
@@ -148,8 +156,11 @@ run_fusion_monster() {
     print_banner
     echo -e "${B_YELLOW}=== [8] 融合怪全功能一键深度体检 ===${NC}"
     info "正在加载融合怪综合评测..."
-    bash <(curl -sL https://raw.githubusercontent.com/spiritLHLS/ecs/main/ecs.sh) || \
-    bash <(curl -sL https://gitlab.com/spiritysdx/ecs/-/raw/main/ecs.sh)
+    run_remote_script \
+        "https://cdn.jsdelivr.net/gh/spiritLHLS/ecs@main/ecs.sh" \
+        "https://raw.githubusercontent.com/spiritLHLS/ecs/main/ecs.sh" \
+        "https://fastly.jsdelivr.net/gh/spiritLHLS/ecs@main/ecs.sh" \
+        "https://ghproxy.com/https://raw.githubusercontent.com/spiritLHLS/ecs/main/ecs.sh"
     pause
 }
 
