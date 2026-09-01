@@ -21,11 +21,20 @@ download_file() {
     
     mkdir -p "$(dirname "$target_file")"
     
-    # Try GitHub Raw (no-cache) -> jsDelivr CDN -> ghproxy
+    # Preferred: GitHub Contents API with raw media type -> reads the live ledger,
+    # immune to jsDelivr/raw CDN caching.
+    if curl -fsSL -H "Accept: application/vnd.github.raw" \
+        "https://api.github.com/repos/ithtelab/vps-toolbox/contents/${rel_path}?ref=main" \
+        -o "$target_file" 2>/dev/null && [ -s "$target_file" ]; then
+        return 0
+    fi
+    # Fallback: GitHub Raw (no-cache headers)
     if curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "${REPO_RAW_URL}/${rel_path}?t=${ts}" -o "$target_file" 2>/dev/null; then
         return 0
+    # Fallback: jsDelivr CDN
     elif curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "${CDN_URL}/${rel_path}?t=${ts}" -o "$target_file" 2>/dev/null; then
         return 0
+    # Fallback: ghproxy
     elif curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "${GH_PROXY}/${rel_path}?t=${ts}" -o "$target_file" 2>/dev/null; then
         return 0
     fi
@@ -90,6 +99,9 @@ load_modules() {
 
 load_modules
 
+# Version marker used to detect stale installs & trigger forced self-update
+export HTE_VERSION="2026.09.01"
+
 # Global Init
 init_environment() {
     check_root
@@ -97,6 +109,19 @@ init_environment() {
     install_dependencies
     if [ ! -f /usr/local/bin/hte ] && [ -f "${TOOLBOX_DIR}/main.sh" ]; then
         ln -sf "${TOOLBOX_DIR}/main.sh" /usr/local/bin/hte 2>/dev/null || true
+    fi
+
+    # Self-heal: detect stale install that predates the live hot-reload engine.
+    # If the on-disk main.sh carries a different version marker, force a resync now.
+    if grep -q "HTE_VERSION" "${TOOLBOX_DIR}/main.sh" 2>/dev/null; then
+        local disk_version
+        disk_version=$(grep -o 'HTE_VERSION="[^"]*"' "${TOOLBOX_DIR}/main.sh" 2>/dev/null)
+        disk_version="${disk_version#HTE_VERSION=\"}"
+        disk_version="${disk_version%\"}"
+        if [ -n "$disk_version" ] && [ "$disk_version" != "$HTE_VERSION" ]; then
+            info "检测到本地脚本版本 (${disk_version}) 与最新版本 (${HTE_VERSION}) 不一致，正在自动修复..."
+            update_toolbox
+        fi
     fi
 }
 
@@ -106,6 +131,9 @@ update_toolbox() {
     info "正在穿透 CDN 缓存拉取最新代码与所有模块..."
     mkdir -p "${TOOLBOX_DIR}/utils" "${TOOLBOX_DIR}/modules"
     
+    local fail_count=0
+    # Always fetch main.sh LAST so the exec below runs the freshly-written file,
+    # not a stale in-memory copy that predates this reload logic.
     local update_files=(
         "utils/colors.sh"
         "utils/sys_detect.sh"
@@ -116,22 +144,27 @@ update_toolbox() {
         "modules/security.sh"
         "modules/docker.sh"
         "modules/clean.sh"
-        "main.sh"
     )
-
-    local fail_count=0
     for f in "${update_files[@]}"; do
         if ! download_file "$f"; then
             fail_count=$((fail_count + 1))
         fi
     done
+    # Finally fetch and verify main.sh
+    if download_file "main.sh" && [ -s "${TOOLBOX_DIR}/main.sh" ]; then
+        :
+    else
+        fail_count=$((fail_count + 1))
+    fi
 
     chmod +x "${TOOLBOX_DIR}/main.sh"
     ln -sf "${TOOLBOX_DIR}/main.sh" /usr/local/bin/hte 2>/dev/null || true
     ln -sf "${TOOLBOX_DIR}/main.sh" /usr/local/bin/toolbox 2>/dev/null || true
 
     if [ "$fail_count" -eq 0 ]; then
-        success "黑天鹅工具箱已成功更新至最新版本！正在立即重新载入..."
+        success "黑天鹅工具箱已成功更新至最新版本！正在无缝热重载..."
+        # Reload modules into memory then exec the freshly-written main.sh
+        # so the *current shell* immediately runs the newest code.
         load_modules
         sleep 1
         exec bash "${TOOLBOX_DIR}/main.sh"
