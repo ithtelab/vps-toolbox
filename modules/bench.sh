@@ -119,16 +119,17 @@ run_global_ping() {
     info "正在并发探测全球重点机房网络延迟与丢包率..."
     
     local targets=(
-        "中国香港 (HK BGP)|hkg.icmp.netcup.net"
-        "日本东京 (Tokyo)|tyo.icmp.netcup.net"
-        "新加坡 (Singapore)|sgp.icmp.netcup.net"
-        "美国西海岸 (Los Angeles)|lax.icmp.netcup.net"
-        "美国东海岸 (New York)|nyc.icmp.netcup.net"
-        "德国法兰克福 (Frankfurt)|fra.icmp.netcup.net"
+        "中国香港 (HK Linode)|speedtest.hongkong.linode.com"
+        "日本东京 (Tokyo Linode)|speedtest.tokyo.linode.com"
+        "新加坡 (Singapore)|speedtest.singapore.linode.com"
+        "美国西海岸 (Los Angeles)|speedtest.fremont.linode.com"
+        "美国东海岸 (New York)|speedtest.newark.linode.com"
+        "德国法兰克福 (Frankfurt)|speedtest.frankfurt.linode.com"
+        "英国伦敦 (London)|speedtest.london.linode.com"
     )
 
     separator
-    printf "%-25s | %-12s | %-10s\n" "测试节点" "平均延迟 (ms)" "丢包率"
+    printf "%-26s | %-12s | %-10s\n" "测试节点" "平均延迟 (ms)" "丢包率"
     separator
 
     for item in "${targets[@]}"; do
@@ -136,16 +137,16 @@ run_global_ping() {
         local host="${item##*|}"
         
         local ping_out
-        ping_out=$(ping -c 4 -W 2 "$host" 2>/dev/null)
-        if [ -n "$ping_out" ]; then
+        ping_out=$(ping -c 3 -W 2 "$host" 2>/dev/null || true)
+        if [ -n "$ping_out" ] && echo "$ping_out" | grep -q "min/avg"; then
             local avg_rtt
             avg_rtt=$(echo "$ping_out" | awk -F'/' 'END {print $5}')
             local loss
-            loss=$(echo "$ping_out" | grep -oP '\d+(?=% packet loss)')
+            loss=$(echo "$ping_out" | grep -oP '\d+(?=% packet loss)' | head -n 1)
             [ -z "$avg_rtt" ] && avg_rtt="超时"
-            printf "%-25s | %-12s | %-10s\n" "$name" "${avg_rtt} ms" "${loss}%"
+            printf "%-26s | %-12s | %-10s\n" "$name" "${avg_rtt} ms" "${loss:-0}%"
         else
-            printf "%-25s | %-12s | %-10s\n" "$name" "不可达" "100%"
+            printf "%-26s | %-12s | %-10s\n" "$name" "超时/阻断" "100%"
         fi
     done
     separator

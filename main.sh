@@ -3,7 +3,8 @@
 # 黑天鹅 Linux 多功能综合运维与测评工具箱 (HTE Linux All-in-One Toolbox)
 # ==============================================================================
 
-set -e
+# Disable set -e to prevent unexpected exit on non-zero command returns (e.g. ping packet loss)
+set +e
 
 # Target installation directory on remote servers
 TOOLBOX_DIR="/etc/vps-toolbox"
@@ -131,7 +132,6 @@ update_toolbox() {
 
     if [ "$fail_count" -eq 0 ]; then
         success "黑天鹅工具箱已成功更新至最新版本！正在立即重新载入..."
-        # Force re-source in current shell and replace process
         load_modules
         sleep 1
         exec bash "${TOOLBOX_DIR}/main.sh"
