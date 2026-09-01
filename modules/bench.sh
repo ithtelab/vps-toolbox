@@ -119,13 +119,13 @@ run_global_ping() {
     info "正在并发探测全球重点机房网络延迟与丢包率..."
     
     local targets=(
-        "中国香港 (HK Linode)|speedtest.hongkong.linode.com"
-        "日本东京 (Tokyo Linode)|speedtest.tokyo.linode.com"
-        "新加坡 (Singapore)|speedtest.singapore.linode.com"
-        "美国西海岸 (Los Angeles)|speedtest.fremont.linode.com"
-        "美国东海岸 (New York)|speedtest.newark.linode.com"
-        "德国法兰克福 (Frankfurt)|speedtest.frankfurt.linode.com"
-        "英国伦敦 (London)|speedtest.london.linode.com"
+        "中国香港 (HK BGP)|103.200.96.1"
+        "日本东京 (Tokyo)|139.162.65.1"
+        "新加坡 (Singapore)|139.162.23.1"
+        "美国西海岸 (Los Angeles)|45.79.64.1"
+        "美国东海岸 (New York)|50.116.57.1"
+        "德国法兰克福 (Frankfurt)|139.162.130.1"
+        "英国伦敦 (London)|212.71.247.1"
     )
 
     separator
