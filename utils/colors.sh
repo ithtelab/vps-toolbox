@@ -54,13 +54,12 @@ double_separator() {
 
 print_banner() {
     clear
-    echo -e "${B_CYAN}╔════════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${B_CYAN}║${NC}          ${B_YELLOW}★ 黑天鹅 Linux 多功能综合运维与测评工具箱 ★${NC}              ${B_CYAN}║${NC}"
-    echo -e "${B_CYAN}║${NC}            ${WHITE}HTE All-in-One Toolbox for Linux Server${NC}                 ${B_CYAN}║${NC}"
-    echo -e "${B_CYAN}╠════════════════════════════════════════════════════════════════════╣${NC}"
-    echo -e "${B_CYAN}║${NC} ${B_PURPLE}【特约赞助】${NC} ${B_GREEN}爱维云官网:${NC} ${CYAN}https://lovevps.cn/${NC}                     ${B_CYAN}║${NC}"
-    echo -e "${B_CYAN}║${NC} ${YELLOW}美国双ISP住宅云主机◆2核2GB 38元起 首单享75折 续费同价 24h退款${NC}   ${B_CYAN}║${NC}"
-    echo -e "${B_CYAN}╚════════════════════════════════════════════════════════════════════╝${NC}"
+    echo -e "${B_CYAN}======================================================================${NC}"
+    echo -e "       ${B_YELLOW}★ 黑天鹅 Linux 多功能综合运维与测评工具箱 (HTE-Box) ★${NC}"
+    echo -e "${B_CYAN}----------------------------------------------------------------------${NC}"
+    echo -e " ${B_PURPLE}【特约赞助】${NC} ${B_GREEN}爱维云官网:${NC} ${CYAN}https://lovevps.cn/${NC}"
+    echo -e " ${YELLOW}美国双ISP住宅云主机 2核2GB 38元起 首单享七五折 续费同价 支持24小时全额退款${NC}"
+    echo -e "${B_CYAN}======================================================================${NC}"
 }
 
 pause() {
