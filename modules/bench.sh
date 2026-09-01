@@ -8,9 +8,9 @@ run_node_quality() {
     echo -e "${B_YELLOW}=== [1] NodeQuality (NQ) 综合质量测试 ===${NC}"
     info "正在拉取并执行 NodeQuality 权威测评..."
     run_remote_script \
-        "https://cdn.jsdelivr.net/gh/Aniverse/inexistence@master/tools/nodequality.sh" \
-        "https://raw.githubusercontent.com/Aniverse/inexistence/master/tools/nodequality.sh" \
-        "https://ghproxy.com/https://raw.githubusercontent.com/Aniverse/inexistence/master/tools/nodequality.sh"
+        "https://raw.githubusercontent.com/LloydAsp/NodeQuality/main/NodeQuality.sh" \
+        "https://cdn.jsdelivr.net/gh/LloydAsp/NodeQuality@main/NodeQuality.sh" \
+        "https://ghproxy.com/https://raw.githubusercontent.com/LloydAsp/NodeQuality/main/NodeQuality.sh"
     pause
 }
 
@@ -19,9 +19,9 @@ run_tcp_quality() {
     echo -e "${B_YELLOW}=== [2] TcpQuality (TQ) 三网回程与 TCP 质量测试 ===${NC}"
     info "正在拉取并执行 TcpQuality 网络质量测试..."
     run_remote_script \
-        "https://cdn.jsdelivr.net/gh/Aniverse/inexistence@master/tools/tcpquality.sh" \
-        "https://raw.githubusercontent.com/Aniverse/inexistence/master/tools/tcpquality.sh" \
-        "https://ghproxy.com/https://raw.githubusercontent.com/Aniverse/inexistence/master/tools/tcpquality.sh"
+        "https://raw.githubusercontent.com/ibsgss/TcpQuality/main/runTcpQuality.sh" \
+        "https://cdn.jsdelivr.net/gh/ibsgss/TcpQuality@main/runTcpQuality.sh" \
+        "https://tcpquality.ibsgss.uk/run"
     pause
 }
 
