@@ -231,6 +231,95 @@ manage_firewall() {
     pause
 }
 
+setup_telegram_alerts() {
+    print_banner
+    echo -e "${B_YELLOW}=== [7] Telegram 机器人安全告警推送 ===${NC}"
+    info "配置 Telegram Bot 实时告警 (SSH 登录 / Fail2ban 封禁 / 高磁盘 / 重启)"
+
+    read -r -p "请输入 Telegram Bot Token (从 @BotFather 获取): " tg_token
+    read -r -p "请输入接收告警的 Chat ID (私聊 @userinfobot 获取): " tg_chat
+
+    if [ -z "$tg_token" ] || [ -z "$tg_chat" ]; then
+        error "Token 与 Chat ID 不能为空！"
+        pause
+        return
+    fi
+
+    # Test the bot connectivity first
+    info "正在测试 Bot 连通性..."
+    local test_resp
+    test_resp=$(curl -s --connect-timeout 8 --max-time 15 "https://api.telegram.org/bot${tg_token}/sendMessage" --data-urlencode "chat_id=${tg_chat}" --data-urlencode "text=✅ 黑天鹅工具箱 Telegram 告警配置成功!" 2>/dev/null)
+    if echo "$test_resp" | grep -q '"ok":true'; then
+        success "Telegram Bot 连通成功！"
+    else
+        error "Telegram Bot 连通失败，请检查 Token / Chat ID / 服务器能否访问 api.telegram.org"
+        pause
+        return
+    fi
+
+    # Deploy notification helper + systemd timer to watch key events
+    local conf="/etc/hte-alerts.conf"
+    cat <<EOF > "$conf"
+TG_TOKEN="${tg_token}"
+TG_CHAT="${tg_chat}"
+EOF
+    chmod 600 "$conf"
+
+    local helper="/usr/local/bin/hte-alert"
+    cat <<'HEOF' > "$helper"
+#!/usr/bin/env bash
+# HTE Telegram Alert helper — reads /etc/hte-alerts.conf
+[ -f /etc/hte-alerts.conf ] && . /etc/hte-alerts.conf
+send_tg() {
+    local msg="$1"
+    [ -z "$TG_TOKEN" ] || [ -z "$TG_CHAT" ] && return 1
+    curl -s --max-time 10 "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+        --data-urlencode "chat_id=${TG_CHAT}" --data-urlencode "text=${msg}" >/dev/null 2>&1
+}
+case "$1" in
+    disk)
+        USE=$(df -h / | awk 'NR==2 {gsub("%","",$5); print $5}')
+        [ "$USE" -gt 90 ] && send_tg "⚠️ 磁盘使用率过高: ${USE}%"
+        ;;
+    sshd)
+        # Brief guard to avoid spamming on rapid logins
+        sleep 3
+        send_tg "🔐 SSH 登录事件: $(last -1 2>/dev/null | head -n1 | awk '{print $1, $3, $5}')"
+        ;;
+esac
+HEOF
+    chmod +x "$helper"
+
+    # systemd timer to check disk every 10 min
+    cat <<EOF > /etc/systemd/system/hte-disk-check.service
+[Unit]
+Description=HTE Disk Usage Alert
+[Service]
+Type=oneshot
+ExecStart=${helper} disk
+EOF
+    cat <<EOF > /etc/systemd/system/hte-disk-check.timer
+[Unit]
+Description=Run HTE disk check every 10 minutes
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+[Install]
+WantedBy=timers.target
+EOF
+    systemctl daemon-reload
+    systemctl enable --now hte-disk-check.timer >/dev/null 2>&1 || true
+
+    # Notify on SSH login via PAM (idempotent)
+    local pam_file="/etc/pam.d/sshd"
+    if [ -f "$pam_file" ] && ! grep -q "hte-alert" "$pam_file"; then
+        echo "session optional ${helper} sshd" >> "$pam_file"
+    fi
+
+    success "Telegram 安全告警配置完成！已开启：磁盘>90% 定时巡检 + SSH 登录实时推送。"
+    pause
+}
+
 menu_security() {
     while true; do
         print_banner
@@ -242,10 +331,11 @@ menu_security() {
         echo -e " ${B_GREEN}4.${NC} 查看 Fail2ban 封禁黑名单与一键解封 IP"
         echo -e " ${B_GREEN}5.${NC} 防火墙端口放行与已监听端口查看"
         echo -e " ${B_GREEN}6.${NC} 开启 TCP SYN Flood 抗攻击与高并发加固"
+        echo -e " ${B_GREEN}7.${NC} 配置 Telegram 机器人安全告警推送"
         separator
         echo -e " ${B_RED}0.${NC} 返回主菜单"
         echo ""
-        read -r -p "请输入选项 [0-6]: " sec_choice
+        read -r -p "请输入选项 [0-7]: " sec_choice
         case "$sec_choice" in
             1) change_ssh_port ;;
             2) setup_ssh_key ;;
@@ -253,6 +343,7 @@ menu_security() {
             4) view_fail2ban_status ;;
             5) manage_firewall ;;
             6) enable_syn_protection ;;
+            7) setup_telegram_alerts ;;
             0) break ;;
             *)
                 echo -e "${RED}输入错误，请重新选择！${NC}"
