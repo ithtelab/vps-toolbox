@@ -42,9 +42,38 @@ install_1panel() {
     pause
 }
 
+install_baota() {
+    print_banner
+    echo -e "${B_YELLOW}=== [4] 宝塔 Linux 运维面板一键安装 ===${NC}"
+    echo -e " ${B_GREEN}1.${NC} 宝塔 Linux 面板官方正式版 (推荐国内/常规服务器)"
+    echo -e " ${B_GREEN}2.${NC} 宝塔海外国际版 (aaPanel - 纯净国际版，无需绑定手机号)"
+    echo -e " ${B_RED}0.${NC} 返回"
+    echo ""
+    read -r -p "请选择宝塔版本 [0-2]: " bt_choice
+
+    case "$bt_choice" in
+        1)
+            info "正在拉取宝塔 Linux 官方正式版安装脚本..."
+            if [ -f /usr/bin/curl ]; then
+                curl -sSO https://download.bt.cn/install/install_panel.sh && bash install_panel.sh ed8484bec
+            else
+                wget -O install_panel.sh https://download.bt.cn/install/install_panel.sh && bash install_panel.sh ed8484bec
+            fi
+            ;;
+        2)
+            info "正在拉取 aaPanel 国际版官方安装脚本..."
+            run_remote_script "http://www.aapanel.com/script/install_6.0_en.sh"
+            ;;
+        *)
+            return
+            ;;
+    esac
+    pause
+}
+
 install_acme_ssl() {
     print_banner
-    echo -e "${B_YELLOW}=== [4] Acme.sh 免费 SSL 证书一键申请 ===${NC}"
+    echo -e "${B_YELLOW}=== [5] Acme.sh 免费 SSL 证书一键申请 ===${NC}"
     info "正在加载 Acme.sh 证书一键申请工具..."
     read -r -p "请输入要申请证书的域名 (例如: node.example.com): " domain
     read -r -p "请输入你的邮箱用于注册: " email
@@ -77,7 +106,7 @@ install_acme_ssl() {
 
 install_librespeed() {
     print_banner
-    echo -e "${B_YELLOW}=== [5] 自建 Speedtest 网页测速节点 (LibreSpeed) ===${NC}"
+    echo -e "${B_YELLOW}=== [6] 自建 Speedtest 网页测速节点 (LibreSpeed) ===${NC}"
     if ! command -v docker >/dev/null 2>&1; then
         error "未安装 Docker，正在先为您自动安装 Docker..."
         install_docker
@@ -107,18 +136,20 @@ menu_docker() {
         echo -e " ${B_GREEN}1.${NC} 安装 Docker & Docker Compose (官方最新版)"
         echo -e " ${B_GREEN}2.${NC} 安装 哪吒探针 (Nezha Agent/Dashboard)"
         echo -e " ${B_GREEN}3.${NC} 安装 1Panel 现代化开源运维面板"
-        echo -e " ${B_GREEN}4.${NC} Acme.sh 免费泛域名 / 单域名 SSL 证书申请"
-        echo -e " ${B_GREEN}5.${NC} 一键部署自建 Speedtest 测速网页 (LibreSpeed)"
+        echo -e " ${B_GREEN}4.${NC} 安装 宝塔 Linux 面板 (官方正式版 / 国际版 aaPanel)"
+        echo -e " ${B_GREEN}5.${NC} Acme.sh 免费泛域名 / 单域名 SSL 证书申请"
+        echo -e " ${B_GREEN}6.${NC} 一键部署自建 Speedtest 测速网页 (LibreSpeed)"
         separator
         echo -e " ${B_RED}0.${NC} 返回主菜单"
         echo ""
-        read -r -p "请输入选项 [0-5]: " doc_choice
+        read -r -p "请输入选项 [0-6]: " doc_choice
         case "$doc_choice" in
             1) install_docker ;;
             2) install_nezha ;;
             3) install_1panel ;;
-            4) install_acme_ssl ;;
-            5) install_librespeed ;;
+            4) install_baota ;;
+            5) install_acme_ssl ;;
+            6) install_librespeed ;;
             0) break ;;
             *)
                 echo -e "${RED}输入错误，请重新选择！${NC}"
