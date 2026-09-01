@@ -172,10 +172,10 @@ main_menu() {
 
         echo -e " ${B_GREEN}[1]${NC} ${B_WHITE}服务器性能与网络综合测评${NC}  ${PURPLE}(NQ, TQ, Geekbench 5, 流媒体, 路由, Ping)${NC}"
         echo -e " ${B_GREEN}[2]${NC} ${B_WHITE}代理与穿透/转发服务搭建${NC}   ${PURPLE}(Socks5 一键, Clash Party/Mihomo, Realm)${NC}"
-        echo -e " ${B_GREEN}[3]${NC} ${B_WHITE}系统优化 / WARP / 一键DD重装${NC} ${PURPLE}(WARP双栈, DD纯净重装, BBR全家桶, Swap, DNS)${NC}"
+        echo -e " ${B_GREEN}[3]${NC} ${B_WHITE}系统优化 / WARP / 一键DD重装${NC} ${PURPLE}(自动安全更新, WARP, DD重装, BBR全家桶, Swap)${NC}"
         echo -e " ${B_GREEN}[4]${NC} ${B_WHITE}Docker 与常用运维环境部署${NC} ${PURPLE}(Docker, 哪吒探针, 1Panel, 宝塔面板, SSL)${NC}"
-        echo -e " ${B_GREEN}[5]${NC} ${B_WHITE}VPS 安全加固与防护管理${NC}    ${PURPLE}(SSH改端口, 密钥登录, Fail2ban解封, 防SYN攻击)${NC}"
-        echo -e " ${B_GREEN}[6]${NC} ${B_WHITE}系统深度清理与日常监控${NC}   ${PURPLE}(垃圾日志清理, 硬件查看, htop/iftop)${NC}"
+        echo -e " ${B_GREEN}[5]${NC} ${B_WHITE}VPS 安全加固与防护管理${NC}    ${PURPLE}(SSH改端口, 密钥登录, Fail2ban, Telegram告警)${NC}"
+        echo -e " ${B_GREEN}[6]${NC} ${B_WHITE}系统深度清理与日常监控${NC}   ${PURPLE}(垃圾清理, Netdata, 磁盘健康, 快照备份)${NC}"
         separator
         echo -e " ${B_YELLOW}[u]${NC} 更新脚本自身                  ${B_RED}[0]${NC} 退出工具箱"
         double_separator
