@@ -48,7 +48,8 @@ download_file() {
 # Strip CRLF / BOM so downloaded scripts execute cleanly under bash (fixes CRLF-load failures)
 normalize_crlf() {
     local f="$1"
-    sed -i 's/\r$//' "$f" 2>/dev/null || true
+    # Remove ALL carriage returns (more reliable than sed $ anchor, catches any \r)
+    tr -d '\r' < "$f" > "${f}.tmp" 2>/dev/null && mv "${f}.tmp" "$f" 2>/dev/null || true
     sed -i '1s/^\xEF\xBB\xBF//' "$f" 2>/dev/null || true
 }
 
