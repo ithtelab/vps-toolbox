@@ -26,19 +26,30 @@ download_file() {
     if curl -fsSL -H "Accept: application/vnd.github.raw" \
         "https://api.github.com/repos/ithtelab/vps-toolbox/contents/${rel_path}?ref=main" \
         -o "$target_file" 2>/dev/null && [ -s "$target_file" ]; then
+        normalize_crlf "$target_file"
         return 0
     fi
     # Fallback: GitHub Raw (no-cache headers)
     if curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "${REPO_RAW_URL}/${rel_path}?t=${ts}" -o "$target_file" 2>/dev/null; then
+        normalize_crlf "$target_file"
         return 0
     # Fallback: jsDelivr CDN
     elif curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "${CDN_URL}/${rel_path}?t=${ts}" -o "$target_file" 2>/dev/null; then
+        normalize_crlf "$target_file"
         return 0
     # Fallback: ghproxy
     elif curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "${GH_PROXY}/${rel_path}?t=${ts}" -o "$target_file" 2>/dev/null; then
+        normalize_crlf "$target_file"
         return 0
     fi
     return 1
+}
+
+# Strip CRLF / BOM so downloaded scripts execute cleanly under bash (fixes CRLF-load failures)
+normalize_crlf() {
+    local f="$1"
+    sed -i 's/\r$//' "$f" 2>/dev/null || true
+    sed -i '1s/^\xEF\xBB\xBF//' "$f" 2>/dev/null || true
 }
 
 # Check if running in a local full repo directory or via curl | bash
