@@ -30,14 +30,39 @@ b64std() {
 
 # ---- Terminal QR code (pure bash, no external deps) ----
 # Renders a QrCode using a compact UTF-8 halftone block approach for display only.
-# NOTE: This is a best-effort display QR. For guaranteed scannability use the
-# subscription link + the "online QR" URL which is always output too.
+# ---- Install qrencode if missing (cross-package-manager) ----
+qrencode_ensure() {
+    command -v qrencode >/dev/null 2>&1 && return 0
+    info "正在安装 qrencode (用于生成二维码)..."
+    case "$PKG_MANAGER" in
+        apt) apt-get install -y qrencode >/dev/null 2>&1 ;;
+        dnf|yum) command -v dnf >/dev/null 2>&1 && dnf install -y qrencode >/dev/null 2>&1 || yum install -y qrencode >/dev/null 2>&1 ;;
+        apk) apk add qrencode >/dev/null 2>&1 ;;
+    esac
+    command -v qrencode >/dev/null 2>&1
+}
+
+# ---- Render a REAL scannable QR code in the terminal (qrencode -t UTF8) ----
+show_qr_terminal() {
+    local text="$1"
+    if command -v qrencode >/dev/null 2>&1; then
+        echo ""
+        echo -e " ${B_YELLOW}┌────────── 请用手机扫码导入 ──────────┐${NC}"
+        echo -n "$text" | qrencode -t UTF8
+        echo -e " ${B_YELLOW}└──────────────────────────────────────┘${NC}"
+        return 0
+    fi
+    return 1
+}
+
+# ---- Terminal QR (real) + online QR fallback ----
 show_qr_text() {
     local text="$1"
-    # Detect terminal block support
-    if [ "$(echo -e '\u2588\u2588' | wc -c)" -ge 5 ] 2>/dev/null; then
-        echo -e "${B_YELLOW}  以下为终端二维码(扫码仅作参考, 建议用上方订阅链接/在线二维码)${NC}"
+    if show_qr_terminal "$text"; then
+        return 0
     fi
+    # Fallback: online QR URL
+    show_online_qr "$text"
 }
 
 # ---- Generate Vless Reality link ----
@@ -227,7 +252,8 @@ EOF
     echo -e " ${B_GREEN}4) 订阅源地址 (导入到 Clash Party 订阅):${NC}"
     echo -e "   ${CYAN}${hostname} 请用 vless 单链或在线二维码${NC}"
     echo ""
-    echo -e " ${B_CYAN}★ 用任意二维码工具扫描下面内容即可导入 (也可复制到 Clash Party)★${NC}"
+    echo -e " ${B_CYAN}★ 手机扫码即可导入 Clash Party (或用上方单链复制导入)★${NC}"
+    qrencode_ensure
     show_qr_text "$node_link"
     echo -e "   ${B_YELLOW}建议:${NC} 在手机上把 VLESS 单链复制进 Clash Party 的『从链接导入』即可"
     separator
@@ -317,6 +343,8 @@ EOF
     echo -e " ${B_GREEN}3) 密码:${NC} ${B_YELLOW}${password}${NC}"
     echo -e " ${B_GREEN}4) 端口:${NC} ${B_YELLOW}${port}${NC}"
     echo ""
+    echo -e " ${B_CYAN}★ 手机扫码即可导入 Clash Party★${NC}"
+    qrencode_ensure
     show_qr_text "$hy_link"
     separator
     pause
@@ -393,24 +421,23 @@ menu_nodes() {
             1) setup_vless_reality ;;
             2) setup_hysteria2 ;;
             3)
-                info "请把已生成的单链粘贴到下方，即可生成 Clash Party 一键导入链接与在线二维码。"
+                info "请把已生成的节点单链粘贴到下方，即可生成 Clash Party 一键导入链接与二维码。"
                 read -r -p "粘贴节点链接 (vless:// 或 hy2://): " user_link
                 if [ -n "$user_link" ]; then
-                    local y
-                    y=$(cat <<EOF
-proxies:
-  - name: "HTE-Custom-Node"
-    type: vless
-    server: localhost
-    port: 443
-    uuid: 00000000-0000-0000-0000-000000000000
-EOF
-)
-                    info "正在生成一键导入链接..."
-                    echo -e " ${B_CYAN}Clash Party 导入链接:${NC}"
-                    echo -e "   ${CYAN}clash://install-config?url=$(echo -n "$user_link" | b64url)${NC}"
+                    # 直接用节点链接生成 Clash Party 导入深链 (url 为 base64url 的节点链接)
+                    local clash_url
+                    clash_url="clash://install-config?url=$(printf '%s' "$user_link" | b64url)"
                     echo ""
-                    show_online_qr "$user_link"
+                    info "已生成导入链接:"
+                    echo -e "   ${CYAN}${clash_url}${NC}"
+                    echo ""
+                    echo -e " ${B_CYAN}────────── 扫码导入 (手机 Clash Party 扫码) ──────────${NC}"
+                    qrencode_ensure
+                    show_qr_text "$user_link"
+                    echo ""
+                    echo -e " ${B_CYAN}也可直接复制上面的 vless:// 或 hy2:// 单链粘贴到 Clash Party 导入。${NC}"
+                else
+                    error "未输入链接！"
                 fi
                 pause
                 ;;
