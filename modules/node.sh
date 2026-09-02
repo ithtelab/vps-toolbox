@@ -122,27 +122,35 @@ setup_vless_reality() {
     echo -e "  ${B_GREEN}SNI:${NC}      ${B_YELLOW}${sni}${NC}"
     echo -e "  ${B_GREEN}ShortID:${NC}  ${B_YELLOW}${shortid}${NC}"
 
-    # 2. Install Xray-core (with Chinese mirror fallback)
+    # 2. Install Xray-core (with Chinese mirror fallback) — MUST verify install succeeded
     info "正在安装 Xray-core..."
-    bash <(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh) >/dev/null 2>&1 || \
-    bash <(curl -fsSL https://ghproxy.com/https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh) >/dev/null 2>&1 || \
-    { error "Xray 安装失败，请检查网络"; pause; return; }
-
     local xray="/usr/local/bin/xray"
+    if [ ! -f "$xray" ]; then
+        bash <(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh) 2>&1 | tail -n 5 || true
+        bash <(curl -fsSL https://ghproxy.com/https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh) >/dev/null 2>&1 || true
+    fi
+    if [ ! -f "$xray" ]; then
+        error "Xray 安装失败，未找到 /usr/local/bin/xray。请检查网络后重试。"
+        pause; return
+    fi
 
     # 3. Generate Reality keypair (xray generate must run once)
     info "正在生成 Reality 密钥对（x25519）..."
     local keypair
     keypair=$($xray x25519 2>/dev/null)
+    # xray x25519 output: "PrivateKey: <key>" and "Password (PublicKey): <key>"
+    # (no space between Private/Key; public key is on the Password (PublicKey) line)
     local private_key
-    private_key=$(echo "$keypair" | awk '/Private key:/ {print $3}')
+    private_key=$(echo "$keypair" | awk -F': ' '/PrivateKey:/ {print $2}' | tr -d ' \r')
     local public_key
-    public_key=$(echo "$keypair" | awk '/Public key:/ {print $3}')
+    public_key=$(echo "$keypair" | awk -F': ' '/Password \(PublicKey\):/ {print $2}' | tr -d ' \r')
 
-    if [ -z "$public_key" ] || [ -z "$private_key" ]; then
-        warn "xray x25519 未返回密钥，尝试手动生成..."
-        private_key="$(gen_hex 32)"
-        public_key="未知（请用 xray x25519 生成后回填）"
+    # Validate a real X25519 key: exactly 43-char base64url
+    if ! [[ "$private_key" =~ ^[A-Za-z0-9_-]{43}$ ]] || ! [[ "$public_key" =~ ^[A-Za-z0-9_-]{43}$ ]] || [ -z "$public_key" ] || [ -z "$private_key" ]; then
+        error "无法生成有效的 Reality 密钥对（请确认 xray 已正确安装并可执行 xray x25519）。停止搭建以避免生成不可用节点。"
+        # Clean partial install config if any
+        rm -f /usr/local/etc/xray/config.json 2>/dev/null || true
+        pause; return
     fi
     echo -e "  ${B_GREEN}Public key:${NC}  ${B_YELLOW}${public_key}${NC}"
 
@@ -253,9 +261,15 @@ setup_hysteria2() {
 
     # Install xray or use sing-box? Use xray-core for hysteria2 in newer versions.
     info "正在安装 Xray-core (含 Hysteria2 支持)..."
-    bash <(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh) >/dev/null 2>&1 || \
-    bash <(curl -fsSL https://ghproxy.com/https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh) >/dev/null 2>&1 || \
-    { error "安装失败"; pause; return; }
+    local xray="/usr/local/bin/xray"
+    if [ ! -f "$xray" ]; then
+        bash <(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh) 2>&1 | tail -n 5 || true
+        bash <(curl -fsSL https://ghproxy.com/https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh) >/dev/null 2>&1 || true
+    fi
+    if [ ! -f "$xray" ]; then
+        error "Xray 安装失败，未找到 /usr/local/bin/xray。请检查网络后重试。"
+        pause; return
+    fi
 
     local confdir="/usr/local/etc/xray"
     mkdir -p "$confdir"
