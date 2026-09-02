@@ -65,6 +65,50 @@ show_qr_text() {
     show_online_qr "$text"
 }
 
+# ---- Reliable Xray-core install (direct zip download, bypasses install-release.sh GitHub API 403) ----
+install_xray_core() {
+    local xray="/usr/local/bin/xray"
+    [ -f "$xray" ] && return 0
+
+    # Resolve latest Xray tag from API; fallback to a known-good version
+    local tag
+    tag=$(curl -sL --connect-timeout 8 --max-time 20 "https://api.github.com/repos/XTLS/Xray-core/releases/latest" 2>/dev/null | grep -m1 '"tag_name"' | sed 's/.*: "//;s/",//')
+    [ -z "$tag" ] && tag="v26.3.27"
+
+    # Map arch to Xray zip asset suffix (linux-64 / linux-arm64 / linux-arm32-v7a)
+    local asfx="linux-64"
+    if [ "$CPU_ARCH" = "aarch64" ]; then asfx="linux-arm64"; 
+    elif [ "$CPU_ARCH" = "armv7" ]; then asfx="linux-arm32-v7a"; fi
+
+    info "正在下载 Xray ${tag} (${asfx})..."
+    local tmpdir
+    tmpdir=$(mktemp -d 2>/dev/null || echo /tmp)
+    local zipf="${tmpdir}/xray.zip"
+
+    local url="https://github.com/XTLS/Xray-core/releases/download/${tag}/Xray-${asfx}.zip"
+    if ! curl -fL --connect-timeout 15 --max-time 180 -o "$zipf" "$url" 2>/dev/null; then
+        # ghproxy mirror fallback
+        curl -fL --connect-timeout 15 --max-time 180 -o "$zipf" "https://ghproxy.com/${url}" 2>/dev/null || true
+    fi
+    [ -s "$zipf" ] || { error "Xray 下载失败，请检查网络。"; rm -rf "$tmpdir"; return 1; }
+
+    if command -v unzip >/dev/null 2>&1; then
+        unzip -oq "$zipf" xray -d "$tmpdir" 2>/dev/null
+    else
+        python3 -c "import zipfile;zipfile.ZipFile('$zipf').extract('xray','$tmpdir')" 2>/dev/null || true
+    fi
+    [ -f "$tmpdir/xray" ] && install -m 0755 "$tmpdir/xray" "$xray"
+    rm -rf "$tmpdir"
+
+    if [ -f "$xray" ] && [ -s "$xray" ]; then
+        chmod +x "$xray"
+        success "Xray 安装成功: $($xray version 2>/dev/null | head -n1)"
+        return 0
+    fi
+    error "Xray 安装失败，未找到 ${xray}。请检查网络后重试。"
+    return 1
+}
+
 # ---- Generate Vless Reality link ----
 make_vless_link() {
     local addr="$1" port="$2" uuid="$3" sni="$4" pubkey="$5" shortid="$6" flow="$7"
@@ -147,17 +191,9 @@ setup_vless_reality() {
     echo -e "  ${B_GREEN}SNI:${NC}      ${B_YELLOW}${sni}${NC}"
     echo -e "  ${B_GREEN}ShortID:${NC}  ${B_YELLOW}${shortid}${NC}"
 
-    # 2. Install Xray-core (with Chinese mirror fallback) — MUST verify install succeeded
-    info "正在安装 Xray-core..."
+    # 2. Install Xray-core — direct zip download (avoids install-release.sh GitHub API 403)
+    install_xray_core || { pause; return; }
     local xray="/usr/local/bin/xray"
-    if [ ! -f "$xray" ]; then
-        bash <(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh) 2>&1 | tail -n 5 || true
-        bash <(curl -fsSL https://ghproxy.com/https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh) >/dev/null 2>&1 || true
-    fi
-    if [ ! -f "$xray" ]; then
-        error "Xray 安装失败，未找到 /usr/local/bin/xray。请检查网络后重试。"
-        pause; return
-    fi
 
     # 3. Generate Reality keypair (xray generate must run once)
     info "正在生成 Reality 密钥对（x25519）..."
@@ -285,17 +321,9 @@ setup_hysteria2() {
     read -r -p "或自定义密码（回车自动生成）: " tmp
     [ -n "$tmp" ] && password="$tmp"
 
-    # Install xray or use sing-box? Use xray-core for hysteria2 in newer versions.
-    info "正在安装 Xray-core (含 Hysteria2 支持)..."
+    # Install xray-core (needed for hysteria2) — direct zip download
+    install_xray_core || { pause; return; }
     local xray="/usr/local/bin/xray"
-    if [ ! -f "$xray" ]; then
-        bash <(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh) 2>&1 | tail -n 5 || true
-        bash <(curl -fsSL https://ghproxy.com/https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh) >/dev/null 2>&1 || true
-    fi
-    if [ ! -f "$xray" ]; then
-        error "Xray 安装失败，未找到 /usr/local/bin/xray。请检查网络后重试。"
-        pause; return
-    fi
 
     local confdir="/usr/local/etc/xray"
     mkdir -p "$confdir"
