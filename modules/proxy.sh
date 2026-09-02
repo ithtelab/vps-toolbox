@@ -29,9 +29,16 @@ install_socks5() {
     local gost_bin="/usr/local/bin/gost"
     if [ ! -f "$gost_bin" ]; then
         info "正在下载 Gost 轻量代理内核..."
-        local gost_arch="amd64"
-        [ "$CPU_ARCH" = "aarch64" ] && gost_arch="armv8"
-        [ "$CPU_ARCH" = "armv7" ] && gost_arch="armv7"
+        # Gost v3 uses "arm64"; v2 uses "armv8" for the same aarch64 CPU.
+        local gost_v3_arch="amd64"
+        local gost_v2_arch="amd64"
+        if [ "$CPU_ARCH" = "aarch64" ]; then
+            gost_v3_arch="arm64"
+            gost_v2_arch="armv8"
+        elif [ "$CPU_ARCH" = "armv7" ]; then
+            gost_v3_arch="armv7"
+            gost_v2_arch="armv7"
+        fi
 
         # Attempt to resolve the current stable release tag (Gost v3)
         local gost_tag
@@ -39,15 +46,20 @@ install_socks5() {
         [ -z "$gost_tag" ] && gost_tag="v3.0.0-rc10"
 
         local gost_urls=(
-            "https://github.com/go-gost/gost/releases/download/${gost_tag}/gost_${gost_tag#v}_linux_${gost_arch}.tar.gz"
-            "https://ghproxy.com/https://github.com/go-gost/gost/releases/download/${gost_tag}/gost_${gost_tag#v}_linux_${gost_arch}.tar.gz"
-            "https://github.com/go-gost/gost/releases/download/v3.0.0-rc10/gost_3.0.0-rc10_linux_${gost_arch}.tar.gz"
-            "https://github.com/ginuerzh/gost/releases/download/v2.11.5/gost-linux-${gost_arch}-2.11.5.gz"
+            # v3 (latest) — asset name uses gost_<ver>_linux_<arch>.tar.gz, arch is "arm64" not "armv8"
+            "https://github.com/go-gost/gost/releases/download/${gost_tag}/gost_${gost_tag#v}_linux_${gost_v3_arch}.tar.gz"
+            "https://ghproxy.com/https://github.com/go-gost/gost/releases/download/${gost_tag}/gost_${gost_tag#v}_linux_${gost_v3_arch}.tar.gz"
+            # v3 pinned fallback
+            "https://github.com/go-gost/gost/releases/download/v3.0.0-rc10/gost_3.0.0-rc10_linux_${gost_v3_arch}.tar.gz"
+            # v2 stable — asset name is gost-linux-<arch>-<ver>.gz, arch is "armv8" for aarch64
+            "https://github.com/ginuerzh/gost/releases/download/v2.11.5/gost-linux-${gost_v2_arch}-2.11.5.gz"
         )
 
         for u in "${gost_urls[@]}"; do
             if wget -q --no-check-certificate -O /tmp/gost.tar.gz "$u"; then
-                tar -zxf /tmp/gost.tar.gz -C /usr/local/bin/ gost 2>/dev/null || gzip -d -c /tmp/gost.tar.gz > /usr/local/bin/gost 2>/dev/null || true
+                # v3 -> tar.gz; v2 -> gz. Extract "gost" binary to /usr/local/bin.
+                tar -zxf /tmp/gost.tar.gz -C /usr/local/bin/ gost 2>/dev/null || \
+                (gzip -d -c /tmp/gost.tar.gz > /usr/local/bin/gost 2>/dev/null) || true
                 # Verify binary exists and is non-empty before accepting
                 if [ -f "$gost_bin" ] && [ -s "$gost_bin" ]; then
                     break
@@ -135,13 +147,40 @@ install_clash_party() {
     mihomo_tag=$(curl -sL --connect-timeout 6 --max-time 15 "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" 2>/dev/null | awk -F'"' '/"tag_name"/ {print $4}')
     [ -z "$mihomo_tag" ] && mihomo_tag="v1.18.7"
 
+    # Resolve the exact .gz asset name for our arch from the release assets (no guessing),
+    # preferring the canonical "mihomo-linux-<arch>-<tag>.gz" form, then -v1/-v2 variants.
+    local mihomo_asset
+    mihomo_asset=$(curl -sL --connect-timeout 6 --max-time 20 \
+        "https://api.github.com/repos/MetaCubeX/mihomo/releases/tags/${mihomo_tag}" 2>/dev/null | \
+        python3 -c "
+import sys,json
+try:
+    d=json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+arch='${m_arch}'
+cands=[a['name'] for a in d.get('assets',[]) if a['name'].endswith('.gz') and ('linux-'+arch) in a['name'] and '-go' not in a['name']]
+# prefer exact, then v1, then any
+def score(n):
+    if n==f'mihomo-linux-{arch}-{d[\"tag_name\"]}.gz': return 0
+    if '-v1-' in n: return 1
+    return 2
+if cands:
+    print(sorted(cands,key=score)[0])
+")
+
     local mihomo_urls=(
+        # Dynamic asset (best)
+        "https://github.com/MetaCubeX/mihomo/releases/download/${mihomo_tag}/${mihomo_asset}"
+        # ghproxy mirror of dynamic asset
+        "https://ghproxy.com/https://github.com/MetaCubeX/mihomo/releases/download/${mihomo_tag}/${mihomo_asset}"
+        # Static fallbacks
         "https://github.com/MetaCubeX/mihomo/releases/download/${mihomo_tag}/mihomo-linux-${m_arch}-${mihomo_tag}.gz"
-        "https://ghproxy.com/https://github.com/MetaCubeX/mihomo/releases/download/${mihomo_tag}/mihomo-linux-${m_arch}-${mihomo_tag}.gz"
         "https://github.com/MetaCubeX/mihomo/releases/download/v1.18.7/mihomo-linux-${m_arch}-v1.18.7.gz"
     )
 
     for mu in "${mihomo_urls[@]}"; do
+        if [ -z "$mu" ]; then continue; fi
         if wget -q --no-check-certificate -O /tmp/mihomo.gz "$mu"; then
             gzip -d /tmp/mihomo.gz -c > "$mihomo_bin" 2>/dev/null || true
             chmod +x "$mihomo_bin"
