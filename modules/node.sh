@@ -20,7 +20,7 @@ gen_hex() {
     head -c "$((n / 2))" /dev/urandom | od -An -tx1 | tr -d ' \n'
 }
 
-# ---- Base64 URL-safe encoding (for subscription links) ----
+# ---- Base64 URL-safe encoding ----
 b64url() {
     base64 -w0 2>/dev/null | tr '+/' '-_' | tr -d '='
 }
@@ -28,8 +28,6 @@ b64std() {
     base64 -w0 2>/dev/null
 }
 
-# ---- Terminal QR code (pure bash, no external deps) ----
-# Renders a QrCode using a compact UTF-8 halftone block approach for display only.
 # ---- Install qrencode if missing (cross-package-manager) ----
 qrencode_ensure() {
     command -v qrencode >/dev/null 2>&1 && return 0
@@ -121,6 +119,12 @@ make_vless_link() {
 vless_to_clash() {
     local ip="$1" name="$2" sni="$3" portin="$4" uuid="$5" pubkey="$6" shortid="$7"
     cat <<EOF
+port: 7890
+socks-port: 7891
+allow-lan: true
+mode: rule
+log-level: info
+
 proxies:
   - name: "${name}"
     type: vless
@@ -137,11 +141,45 @@ proxies:
       short-id: ${shortid}
     client-fingerprint: chrome
 
+proxy-groups:
+  - name: "节点选择"
+    type: select
+    proxies:
+      - "${name}"
+      - DIRECT
+
+rules:
+  - MATCH,节点选择
+EOF
+}
+
+# ---- Generate Hysteria2 Clash YAML ----
+clash_xray_hysteria() {
+    local ip="$1" port="$2" pass="$3"
+    cat <<EOF
 port: 7890
 socks-port: 7891
 allow-lan: true
 mode: rule
-log-level: warning
+log-level: info
+
+proxies:
+  - name: "HTE-Hysteria2-${ip}"
+    type: hysteria2
+    server: ${ip}
+    port: ${port}
+    password: "${pass}"
+    skip-cert-verify: true
+
+proxy-groups:
+  - name: "节点选择"
+    type: select
+    proxies:
+      - "HTE-Hysteria2-${ip}"
+      - DIRECT
+
+rules:
+  - MATCH,节点选择
 EOF
 }
 
@@ -150,11 +188,32 @@ valid_port() {
     [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 1 ] && [ "$1" -le 65535 ]
 }
 
+# ---- Start a lightweight background HTTP subscription server for Clash YAML ----
+start_sub_server() {
+    local yaml_content="$1"
+    local sub_port=20808
+    local sub_dir="/var/www/hte_sub"
+    mkdir -p "$sub_dir"
+    echo "$yaml_content" > "${sub_dir}/clash.yaml"
+
+    # Stop any previous sub server
+    pkill -f "hte_sub_server" 2>/dev/null || true
+
+    # Start a minimal python http server in background
+    if command -v python3 >/dev/null 2>&1; then
+        nohup python3 -m http.server "$sub_port" --directory "$sub_dir" >/dev/null 2>&1 &
+    elif command -v python >/dev/null 2>&1; then
+        (cd "$sub_dir" && nohup python -m SimpleHTTPServer "$sub_port" >/dev/null 2>&1 &)
+    fi
+
+    open_port "$sub_port" tcp
+}
+
 # ---- Deep-dive: One-click VLESS Reality Node Setup ----
 setup_vless_reality() {
     print_banner
     echo -e "${B_YELLOW}=== [1] 一键搭建 VLESS-Reality 节点 (小白向) ===${NC}"
-    info "VLESS-Reality：无需域名、无需证书、无需伪装 IP，直接生成可用节点"
+    info "VLESS-Reality：无需域名、无需证书、抗封锁强，直接生成可用节点"
 
     if [ "$(id -u)" -ne 0 ]; then
         error "请以 root 运行 (sudo -i)。"
@@ -199,8 +258,6 @@ setup_vless_reality() {
     info "正在生成 Reality 密钥对（x25519）..."
     local keypair
     keypair=$($xray x25519 2>/dev/null)
-    # xray x25519 output: "PrivateKey: <key>" and "Password (PublicKey): <key>"
-    # (no space between Private/Key; public key is on the Password (PublicKey) line)
     local private_key
     private_key=$(echo "$keypair" | awk -F': ' '/PrivateKey:/ {print $2}' | tr -d ' \r')
     local public_key
@@ -208,8 +265,7 @@ setup_vless_reality() {
 
     # Validate a real X25519 key: exactly 43-char base64url
     if ! [[ "$private_key" =~ ^[A-Za-z0-9_-]{43}$ ]] || ! [[ "$public_key" =~ ^[A-Za-z0-9_-]{43}$ ]] || [ -z "$public_key" ] || [ -z "$private_key" ]; then
-        error "无法生成有效的 Reality 密钥对（请确认 xray 已正确安装并可执行 xray x25519）。停止搭建以避免生成不可用节点。"
-        # Clean partial install config if any
+        error "无法生成有效的 Reality 密钥对。停止搭建以避免生成不可用节点。"
         rm -f /usr/local/etc/xray/config.json 2>/dev/null || true
         pause; return
     fi
@@ -256,7 +312,7 @@ EOF
     open_port "$port" tcp
     open_port "$port" udp
 
-    # 6. Build output links
+    # 6. Build output links & subscription
     local node_link
     node_link=$(make_vless_link "$ipaddr" "$port" "$uuid" "$sni" "$public_key" "$shortid" "$flow")
     local name="HTE-VLESS-${ipaddr}"
@@ -265,33 +321,25 @@ EOF
     local clash_yaml
     clash_yaml=$(vless_to_clash "$ipaddr" "$name" "$sni" "$port" "$uuid" "$public_key" "$shortid")
 
-    local sub_url
-    sub_url="clash://install-config?url=$(echo -n "$clash_yaml" | b64url)"
-    local sub_url2
-    sub_url2="clash://import-config?url=$(b64url <<< "$clash_yaml")"
-
-    local vless_disp="${node_link}"
+    # Start HTTP subscription server
+    start_sub_server "$clash_yaml"
+    local http_sub_url="http://${ipaddr}:20808/clash.yaml"
 
     echo ""
     separator
-    success "VLESS-Reality 节点搭建成功！以下内容可直接导入 Clash Party："
+    success "VLESS-Reality 节点搭建成功！节点已处于运行状态！"
     separator
-    echo -e " ${B_GREEN}1) VLESS 单链 (复制到 Clash Party 导入):${NC}"
-    echo -e "   ${CYAN}${vless_disp}${NC}"
+    echo -e " ${B_GREEN}★ 方法一：复制 VLESS 节点单链（最简单推荐）${NC}"
+    echo -e "   ${CYAN}${node_link}${NC}"
+    echo -e "   ${WHITE}【导入方式】复制上方单链 -> 打开 Clash Party / Clash Verge / v2rayN -> 点击【代理/节点】-> 点击【从剪贴板导入】即可！${NC}"
     echo ""
-    echo -e " ${B_GREEN}2) Clash Party 一键导入链接 #1:${NC}"
-    echo -e "   ${CYAN}${sub_url}${NC}"
+    echo -e " ${B_GREEN}★ 方法二：Clash 订阅链接（自动托管配置文件）${NC}"
+    echo -e "   ${CYAN}${http_sub_url}${NC}"
+    echo -e "   ${WHITE}【导入方式】复制上方 http 链接 -> 打开 Clash Party -> 点击【配置/订阅】-> 粘贴到【订阅 URL】即可！${NC}"
     echo ""
-    echo -e " ${B_GREEN}3) Clash Party 一键导入链接 #2:${NC}"
-    echo -e "   ${CYAN}${sub_url2}${NC}"
-    echo ""
-    echo -e " ${B_GREEN}4) 订阅源地址 (导入到 Clash Party 订阅):${NC}"
-    echo -e "   ${CYAN}${hostname} 请用 vless 单链或在线二维码${NC}"
-    echo ""
-    echo -e " ${B_CYAN}★ 手机扫码即可导入 Clash Party (或用上方单链复制导入)★${NC}"
+    echo -e " ${B_GREEN}★ 方法三：手机扫码导入（二维码已包含完整节点配置）${NC}"
     qrencode_ensure
     show_qr_text "$node_link"
-    echo -e "   ${B_YELLOW}建议:${NC} 在手机上把 VLESS 单链复制进 Clash Party 的『从链接导入』即可"
     separator
     pause
 }
@@ -356,20 +404,22 @@ EOF
     hy_link="${hy_link// /%20}"
 
     local clash_yaml
-    clash_yaml=$clash_xray_hysteria "$ipaddr" "$port" "$password"
+    clash_yaml=$(clash_xray_hysteria "$ipaddr" "$port" "$password")
+
+    start_sub_server "$clash_yaml"
+    local http_sub_url="http://${ipaddr}:20808/clash.yaml"
 
     echo ""
     separator
     success "Hysteria2 节点搭建成功！"
     separator
-    echo -e " ${B_GREEN}1) 单链复制导入:${NC}"
+    echo -e " ${B_GREEN}★ 方法一：Hysteria2 节点单链（直接复制导入）${NC}"
     echo -e "   ${CYAN}${hy_link}${NC}"
     echo ""
-    echo -e " ${B_GREEN}2) Clash Party 一键导入:${NC}"
-    echo -e "   ${CYAN}clash://install-config?url=$(echo -n "$clash_yaml" | b64url)${NC}"
+    echo -e " ${B_GREEN}★ 方法二：Clash 订阅链接${NC}"
+    echo -e "   ${CYAN}${http_sub_url}${NC}"
     echo ""
-    echo -e " ${B_GREEN}3) 密码:${NC} ${B_YELLOW}${password}${NC}"
-    echo -e " ${B_GREEN}4) 端口:${NC} ${B_YELLOW}${port}${NC}"
+    echo -e " ${B_GREEN}密码:${NC} ${B_YELLOW}${password}${NC} | ${B_GREEN}端口:${NC} ${B_YELLOW}${port}${NC}"
     echo ""
     echo -e " ${B_CYAN}★ 手机扫码即可导入 Clash Party★${NC}"
     qrencode_ensure
@@ -378,33 +428,14 @@ EOF
     pause
 }
 
-clash_xray_hysteria() {
-    local ip="$1" port="$2" pass="$3"
-    cat <<EOF
-proxies:
-  - name: "HTE-Hysteria2-${ip}"
-    type: hysteria2
-    server: ${ip}
-    port: ${port}
-    password: "${pass}"
-    skip-cert-verify: true
-port: 7890
-socks-port: 7891
-allow-lan: true
-mode: rule
-EOF
-}
-
 # ---- Deep-dive: Online QR (via api.qrserver) ----
 show_online_qr() {
     local url="$1"
-    # URL-encode the data param safely (replace reserved chars)
     local enc
     enc=$(printf '%s' "$url" | sed -e 's|#|%23|g' -e 's|&|%26|g' -e 's|?|%3F|g' -e 's|=|%3D|g' -e 's|@|%40|g' -e 's|:|%3A|g' -e 's|/|%2F|g')
     local qrurl
     qrurl="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${enc}"
-    echo -e " ${B_CYAN}在线二维码:${NC} ${CYAN}${qrurl}${NC}"
-    echo -e " ${B_CYAN}用手机对着这个链接/二维码扫一下即可导入${NC}"
+    echo -e " ${B_CYAN}备用在线二维码网址:${NC} ${CYAN}${qrurl}${NC}"
 }
 
 # ---- Node management helper ----
@@ -412,20 +443,26 @@ manage_nodes() {
     print_banner
     echo -e "${B_YELLOW}=== 节点运维管理 ===${NC}"
     echo -e " ${B_GREEN}1.${NC} 查看 Xray 运行状态"
-    echo -e " ${B_GREEN}2.${NC} 查看当前节点配置端端口"
-    echo -e " ${B_GREEN}3.${NC} 重启 Xray"
-    echo -e " ${B_GREEN}4.${NC} 停止并卸载节点 (Xray)"
+    echo -e " ${B_GREEN}2.${NC} 查看当前节点配置与端口监听"
+    echo -e " ${B_GREEN}3.${NC} 重启 Xray 服务"
+    echo -e " ${B_GREEN}4.${NC} 停止并彻底卸载节点服务 (Xray)"
     echo -e " ${B_RED}0.${NC} 返回"
     echo ""
     read -r -p "请选择: " mg
     case "$mg" in
-        1) systemctl status xray --no-pager 2>/dev/null | head -n 12 ;;
-        2) echo -e "已打开的监听端口: "; ss -tulpn 2>/dev/null | grep -iE 'xray|443|8443' || echo "  (无)";;
+        1) systemctl status xray --no-pager 2>/dev/null | head -n 15 ;;
+        2)
+            echo -e "已打开的监听端口: "
+            ss -tulpn 2>/dev/null | grep -iE 'xray|443|8443|20808' || echo "  (无)"
+            echo ""
+            [ -f /var/www/hte_sub/clash.yaml ] && cat /var/www/hte_sub/clash.yaml
+            ;;
         3) systemctl restart xray && success "Xray 已重启" ;;
         4)
             systemctl stop xray 2>/dev/null; systemctl disable xray 2>/dev/null
-            rm -f /usr/local/etc/xray/config.json
-            success "Xray 节点已停止并移除配置。";;
+            pkill -f "http.server 20808" 2>/dev/null || true
+            rm -f /usr/local/etc/xray/config.json /var/www/hte_sub/clash.yaml
+            success "Xray 节点已停止并清理配置。";;
         0) return ;;
         *) error "无效输入";;
     esac
@@ -439,7 +476,7 @@ menu_nodes() {
         separator
         echo -e " ${B_GREEN}1.${NC} 一键搭建 VLESS-Reality 节点 (免域名/免证书, 推荐)"
         echo -e " ${B_GREEN}2.${NC} 一键搭建 Hysteria2 节点 (抗封锁/低延迟)"
-        echo -e " ${B_GREEN}3.${NC} 生成 Clash Party 订阅链接 + 在线二维码工具"
+        echo -e " ${B_GREEN}3.${NC} 导入已有单链生成二维码"
         echo -e " ${B_GREEN}4.${NC} 节点运维管理 (状态/重启/卸载)"
         separator
         echo -e " ${B_RED}0.${NC} 返回主菜单"
@@ -449,21 +486,15 @@ menu_nodes() {
             1) setup_vless_reality ;;
             2) setup_hysteria2 ;;
             3)
-                info "请把已生成的节点单链粘贴到下方，即可生成 Clash Party 一键导入链接与二维码。"
+                info "请把已生成的节点单链粘贴到下方，即可生成二维码。"
                 read -r -p "粘贴节点链接 (vless:// 或 hy2://): " user_link
                 if [ -n "$user_link" ]; then
-                    # 直接用节点链接生成 Clash Party 导入深链 (url 为 base64url 的节点链接)
-                    local clash_url
-                    clash_url="clash://install-config?url=$(printf '%s' "$user_link" | b64url)"
-                    echo ""
-                    info "已生成导入链接:"
-                    echo -e "   ${CYAN}${clash_url}${NC}"
                     echo ""
                     echo -e " ${B_CYAN}────────── 扫码导入 (手机 Clash Party 扫码) ──────────${NC}"
                     qrencode_ensure
                     show_qr_text "$user_link"
                     echo ""
-                    echo -e " ${B_CYAN}也可直接复制上面的 vless:// 或 hy2:// 单链粘贴到 Clash Party 导入。${NC}"
+                    echo -e " ${B_CYAN}也可直接复制该单链粘贴到 Clash Party 的【代理/节点】里导入。${NC}"
                 else
                     error "未输入链接！"
                 fi
