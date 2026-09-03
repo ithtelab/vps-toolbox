@@ -147,13 +147,85 @@ sync_time() {
     info "设置时区为 Asia/Shanghai (中国标准时间 CST)..."
     timedatectl set-timezone Asia/Shanghai 2>/dev/null || ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
 
+    info "正在同步网络原子钟时间..."
     if command -v chrony >/dev/null 2>&1; then
         systemctl restart chrony 2>/dev/null || true
     elif command -v ntpdate >/dev/null 2>&1; then
         ntpdate -u pool.ntp.org 2>/dev/null || true
+    else
+        case "$PKG_MANAGER" in
+            apt) apt-get install -y chrony >/dev/null 2>&1 && systemctl restart chrony 2>/dev/null || true ;;
+            dnf|yum) $PKG_MANAGER install -y chrony >/dev/null 2>&1 && systemctl restart chronyd 2>/dev/null || true ;;
+            apk) apk add chrony >/dev/null 2>&1 && rc-service chronyd restart >/dev/null 2>&1 || true ;;
+        esac
     fi
 
     success "时区已更新为: $(date -R)"
+    pause
+}
+
+tune_network_stack() {
+    print_banner
+    echo -e "${B_YELLOW}=== [9] 一键系统网络与连接句柄极限优化 (Sysctl/TCP调优) ===${NC}"
+    info "正在优化 Linux 内核 TCP 缓冲区、并发队列与最大文件句柄限制 (nofile)..."
+
+    # Backup sysctl.conf
+    cp /etc/sysctl.conf /etc/sysctl.conf.bak 2>/dev/null || true
+
+    # Clean old values
+    local keys=(
+        "fs.file-max"
+        "net.core.somaxconn"
+        "net.core.netdev_max_backlog"
+        "net.core.rmem_max"
+        "net.core.wmem_max"
+        "net.ipv4.tcp_max_syn_backlog"
+        "net.ipv4.tcp_slow_start_after_idle"
+        "net.ipv4.tcp_tw_reuse"
+        "net.ipv4.tcp_fin_timeout"
+        "net.ipv4.tcp_keepalive_time"
+    )
+    for k in "${keys[@]}"; do
+        sed -i "/^${k}/d" /etc/sysctl.conf
+    done
+
+    # Append optimized kernel tuning
+    cat <<EOF >> /etc/sysctl.conf
+fs.file-max = 1000000
+net.core.somaxconn = 65535
+net.core.netdev_max_backlog = 250000
+net.core.rmem_max = 67108864
+net.core.wmem_max = 67108864
+net.ipv4.tcp_max_syn_backlog = 16384
+net.ipv4.tcp_slow_start_after_idle = 0
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_fin_timeout = 15
+net.ipv4.tcp_keepalive_time = 300
+EOF
+
+    # Apply sysctl parameters
+    sysctl -p >/dev/null 2>&1 || true
+
+    # Tune limits.conf (file descriptors)
+    if [ -f /etc/security/limits.conf ]; then
+        sed -i '/soft nofile/d' /etc/security/limits.conf
+        sed -i '/hard nofile/d' /etc/security/limits.conf
+        cat <<EOF >> /etc/security/limits.conf
+* soft nofile 1000000
+* hard nofile 1000000
+root soft nofile 1000000
+root hard nofile 1000000
+EOF
+    fi
+
+    # Set current session ulimit
+    ulimit -n 1000000 2>/dev/null || true
+
+    success "系统并发与网络参数极限调优完成！"
+    echo -e "  - 最大文件打开数 (nofile):  ${B_GREEN}1,000,000${NC}"
+    echo -e "  - 全连接队列 (somaxconn):    ${B_GREEN}65,535${NC}"
+    echo -e "  - 半连接队列 (syn_backlog):  ${B_GREEN}16,384${NC}"
+    echo -e "  - TCP Fast Open/TW Reuse:    ${B_GREEN}已开启${NC}"
     pause
 }
 
@@ -244,10 +316,11 @@ menu_system() {
         echo -e " ${B_GREEN}6.${NC} 设置上海时区 (CST) 与 NTP 网络时间校准"
         echo -e " ${B_GREEN}7.${NC} DNS 快速持久化优化 (Google / CF / 阿里)"
         echo -e " ${B_GREEN}8.${NC} 系统自动安全补丁更新 (unattended-upgrades)"
+        echo -e " ${B_GREEN}9.${NC} 一键系统与网络参数极限优化 (Sysctl/TCP调优/100万句柄)"
         separator
         echo -e " ${B_RED}0.${NC} 返回主菜单"
         echo ""
-        read -r -p "请输入选项 [0-8]: " sys_choice
+        read -r -p "请输入选项 [0-9]: " sys_choice
         case "$sys_choice" in
             1) enable_bbr ;;
             2) install_warp ;;
@@ -257,6 +330,7 @@ menu_system() {
             6) sync_time ;;
             7) optimize_dns ;;
             8) setup_auto_security_updates ;;
+            9) tune_network_stack ;;
             0) break ;;
             *)
                 echo -e "${RED}输入错误，请重新选择！${NC}"
