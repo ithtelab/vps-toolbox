@@ -135,17 +135,10 @@ make_vless_link() {
         "$uuid" "$addr" "$port" "$sni" "$pubkey" "$shortid" "$flow" "HTE-${sni}"
 }
 
-# ---- Generate Clash YAML from vless link ----
-vless_to_clash() {
+# ---- Generate Vless Reality proxy block ----
+vless_proxy_block() {
     local ip="$1" name="$2" sni="$3" portin="$4" uuid="$5" pubkey="$6" shortid="$7"
     cat <<EOF
-port: 7890
-socks-port: 7891
-allow-lan: true
-mode: rule
-log-level: info
-
-proxies:
   - name: "${name}"
     type: vless
     server: ${ip}
@@ -160,6 +153,34 @@ proxies:
       public-key: ${pubkey}
       short-id: ${shortid}
     client-fingerprint: chrome
+EOF
+}
+
+# ---- Generate Hysteria2 proxy block ----
+hysteria2_proxy_block() {
+    local ip="$1" name="$2" port="$3" pass="$4"
+    cat <<EOF
+  - name: "${name}"
+    type: hysteria2
+    server: ${ip}
+    port: ${port}
+    password: "${pass}"
+    skip-cert-verify: true
+EOF
+}
+
+# ---- Generate Clash YAML from vless link (standalone fallback) ----
+vless_to_clash() {
+    local ip="$1" name="$2" sni="$3" portin="$4" uuid="$5" pubkey="$6" shortid="$7"
+    cat <<EOF
+port: 7890
+socks-port: 7891
+allow-lan: true
+mode: rule
+log-level: info
+
+proxies:
+$(vless_proxy_block "$ip" "$name" "$sni" "$portin" "$uuid" "$pubkey" "$shortid")
 
 proxy-groups:
   - name: "节点选择"
@@ -173,9 +194,10 @@ rules:
 EOF
 }
 
-# ---- Generate Hysteria2 Clash YAML ----
+# ---- Generate Hysteria2 Clash YAML (standalone fallback) ----
 clash_xray_hysteria() {
     local ip="$1" port="$2" pass="$3"
+    local name="HTE-Hysteria2-${ip}"
     cat <<EOF
 port: 7890
 socks-port: 7891
@@ -184,18 +206,13 @@ mode: rule
 log-level: info
 
 proxies:
-  - name: "HTE-Hysteria2-${ip}"
-    type: hysteria2
-    server: ${ip}
-    port: ${port}
-    password: "${pass}"
-    skip-cert-verify: true
+$(hysteria2_proxy_block "$ip" "$name" "$port" "$pass")
 
 proxy-groups:
   - name: "节点选择"
     type: select
     proxies:
-      - "HTE-Hysteria2-${ip}"
+      - "${name}"
       - DIRECT
 
 rules:
@@ -225,17 +242,100 @@ url_encode() {
     echo "${encoded}"
 }
 
+# ---- Append or register a node into the Clash subscription pool ----
+register_clash_node() {
+    local node_name="$1"
+    local node_yaml_block="$2"
+    local sub_dir="/var/www/hte_sub"
+    local pool_file="${sub_dir}/nodes_pool.conf"
+    mkdir -p "$sub_dir"
+
+    # Remove existing node with same name if any
+    if [ -f "$pool_file" ]; then
+        python3 -c "
+fname = '${pool_file}'
+nname = '${node_name}'
+try:
+    with open(fname, 'r') as f:
+        content = f.read()
+    blocks = content.split('###NODE_START###')
+    kept = []
+    for b in blocks:
+        if not b.strip(): continue
+        lines = b.strip().split('\n')
+        if lines[0].strip() != nname:
+            kept.append(b.strip())
+    with open(fname, 'w') as f:
+        for k in kept:
+            f.write('###NODE_START###\n' + k + '\n')
+except Exception:
+    pass
+" 2>/dev/null || true
+    fi
+
+    # Append current node
+    {
+        echo "###NODE_START###"
+        echo "${node_name}"
+        echo "${node_yaml_block}"
+    } >> "$pool_file"
+
+    # Rebuild multi-node clash.yaml
+    python3 -c "
+import os
+pool_file = '${pool_file}'
+out_file = '${sub_dir}/clash.yaml'
+proxies = []
+proxy_names = []
+
+if os.path.exists(pool_file):
+    with open(pool_file, 'r') as f:
+        content = f.read()
+    blocks = content.split('###NODE_START###')
+    for b in blocks:
+        if not b.strip(): continue
+        lines = b.strip().split('\n')
+        name = lines[0].strip()
+        yaml_lines = lines[1:]
+        if name and yaml_lines:
+            proxy_names.append(name)
+            proxies.append('\n'.join(yaml_lines))
+
+if proxies:
+    with open(out_file, 'w') as f:
+        f.write('''port: 7890
+socks-port: 7891
+allow-lan: true
+mode: rule
+log-level: info
+
+proxies:
+''')
+        for p in proxies:
+            f.write(p + '\n')
+        f.write('''
+proxy-groups:
+  - name: \"节点选择\"
+    type: select
+    proxies:
+''')
+        for n in proxy_names:
+            f.write(f'      - \"{n}\"\n')
+        f.write('''      - DIRECT
+
+rules:
+  - MATCH,节点选择
+''')
+" 2>/dev/null || true
+
+    start_sub_server
+}
+
 # ---- Start a persistent background HTTP subscription server for Clash YAML ----
 start_sub_server() {
-    local yaml_content="$1"
     local sub_port=20808
     local sub_dir="/var/www/hte_sub"
     mkdir -p "$sub_dir"
-    echo "$yaml_content" > "${sub_dir}/clash.yaml"
-
-    # Stop old process
-    pkill -f "http.server 20808" 2>/dev/null || true
-    pkill -f "SimpleHTTPServer 20808" 2>/dev/null || true
 
     # Ensure Python3 is available (for minimal OS images)
     if ! command -v python3 >/dev/null 2>&1 && ! command -v python >/dev/null 2>&1; then
@@ -394,34 +494,36 @@ EOF
     open_port "$port" tcp
     open_port "$port" udp
 
-    # 6. Build output links & subscription
+    # 6. Register node into multi-node subscription pool & generate Clash YAML
     local node_link
     node_link=$(make_vless_link "$ipaddr" "$port" "$uuid" "$sni" "$public_key" "$shortid" "$flow")
     local name="HTE-VLESS-${ipaddr}"
     name="${name//[^A-Za-z0-9-]/_}"
 
-    local clash_yaml
-    clash_yaml=$(vless_to_clash "$ipaddr" "$name" "$sni" "$port" "$uuid" "$public_key" "$shortid")
-
-    # Start HTTP subscription server
-    start_sub_server "$clash_yaml"
+    local pblock
+    pblock=$(vless_proxy_block "$ipaddr" "$name" "$sni" "$port" "$uuid" "$public_key" "$shortid")
+    register_clash_node "$name" "$pblock"
     local http_sub_url="http://${ipaddr}:20808/clash.yaml"
 
     echo ""
     separator
-    success "VLESS-Reality 节点搭建成功！节点已处于运行状态！"
+    success "VLESS-Reality 节点搭建成功！节点已加入 Clash 聚合订阅池！"
     separator
     echo -e " ${B_GREEN}★ 方法一：复制 VLESS 节点单链（最简单推荐）${NC}"
     echo -e "   ${CYAN}${node_link}${NC}"
     echo -e "   ${WHITE}【导入方式】复制上方单链 -> 打开 Clash Party / Clash Verge / v2rayN -> 点击【代理/节点】-> 点击【从剪贴板导入】即可！${NC}"
     echo ""
-    echo -e " ${B_GREEN}★ 方法二：Clash 订阅链接（自动托管配置文件）${NC}"
+    echo -e " ${B_GREEN}★ 方法二：Clash 多节点聚合订阅链接（自动托管配置文件）${NC}"
     echo -e "   ${CYAN}${http_sub_url}${NC}"
     echo -e "   ${WHITE}【导入方式】复制上方 http 链接 -> 打开 Clash Party -> 点击【配置/订阅】-> 粘贴到【订阅 URL】即可！${NC}"
     echo ""
     echo -e " ${B_GREEN}★ 方法三：手机扫码导入（二维码已包含完整节点配置）${NC}"
     qrencode_ensure
     show_qr_text "$node_link"
+    echo ""
+    echo -e " ${B_YELLOW}⚠️  【云服务器重要提醒】如果您使用的是 腾讯云/阿里云/华为云/甲骨文/AWS 等云服务器：${NC}"
+    echo -e " ${B_YELLOW}    请务必前往网页控制台，在【安全组 / 防火墙】中放行 TCP 端口 20808 (订阅) 与 ${port} (节点)！${NC}"
+    echo -e " ${B_YELLOW}    否则外网将无法拉取订阅或连接节点。${NC}"
     separator
     pause
 }
@@ -511,27 +613,31 @@ EOF
     hy_link="hy2://${password}@${ipaddr}:${port}?insecure=1#HTE-Hysteria2-${ipaddr}"
     hy_link="${hy_link// /%20}"
 
-    local clash_yaml
-    clash_yaml=$(clash_xray_hysteria "$ipaddr" "$port" "$password")
-
-    start_sub_server "$clash_yaml"
+    local name="HTE-Hysteria2-${ipaddr}"
+    local pblock
+    pblock=$(hysteria2_proxy_block "$ipaddr" "$name" "$port" "$password")
+    register_clash_node "$name" "$pblock"
     local http_sub_url="http://${ipaddr}:20808/clash.yaml"
 
     echo ""
     separator
-    success "Hysteria2 节点搭建成功！"
+    success "Hysteria 2 节点搭建成功！节点已加入 Clash 聚合订阅池！"
     separator
-    echo -e " ${B_GREEN}★ 方法一：Hysteria2 节点单链（直接复制导入）${NC}"
+    echo -e " ${B_GREEN}★ 方法一：Hysteria 2 节点单链（直接复制导入）${NC}"
     echo -e "   ${CYAN}${hy_link}${NC}"
     echo ""
-    echo -e " ${B_GREEN}★ 方法二：Clash 订阅链接${NC}"
+    echo -e " ${B_GREEN}★ 方法二：Clash 多节点聚合订阅链接${NC}"
     echo -e "   ${CYAN}${http_sub_url}${NC}"
     echo ""
     echo -e " ${B_GREEN}密码:${NC} ${B_YELLOW}${password}${NC} | ${B_GREEN}端口:${NC} ${B_YELLOW}${port}${NC}"
     echo ""
-    echo -e " ${B_CYAN}★ 手机扫码即可导入 Clash Party★${NC}"
+    echo -e " ${B_CYAN}★ 手机扫码即可导入 Clash Party / 客户端★${NC}"
     qrencode_ensure
     show_qr_text "$hy_link"
+    echo ""
+    echo -e " ${B_YELLOW}⚠️  【云服务器重要提醒】如果您使用的是 腾讯云/阿里云/华为云/甲骨文/AWS 等云服务器：${NC}"
+    echo -e " ${B_YELLOW}    请务必前往网页控制台，在【安全组 / 防火墙】中放行 TCP 端口 20808 (订阅) 与 UDP 端口 ${port} (Hysteria2 节点)！${NC}"
+    echo -e " ${B_YELLOW}    否则外网将无法拉取订阅或连接节点。${NC}"
     separator
     pause
 }
@@ -577,8 +683,11 @@ manage_nodes() {
             systemctl stop hysteria-server 2>/dev/null; systemctl disable hysteria-server 2>/dev/null
             systemctl stop hte-sub 2>/dev/null; systemctl disable hte-sub 2>/dev/null
             pkill -f "http.server 20808" 2>/dev/null || true
-            rm -f /usr/local/etc/xray/config.json /etc/hysteria/config.yaml /var/www/hte_sub/clash.yaml
+            rm -f /usr/local/etc/xray/config.json /etc/hysteria/config.yaml /var/www/hte_sub/clash.yaml /var/www/hte_sub/nodes_pool.conf
             success "所有节点及订阅服务已停止并清理配置。";;
+        6)
+            rm -f /var/www/hte_sub/nodes_pool.conf /var/www/hte_sub/clash.yaml
+            success "Clash 订阅节点池已清空并重置。";;
         0) return ;;
         *) error "无效输入";;
     esac
