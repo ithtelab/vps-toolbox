@@ -107,6 +107,26 @@ install_xray_core() {
     return 1
 }
 
+# ---- Reliable Hysteria 2 install (official binary) ----
+install_hysteria_core() {
+    local hy="/usr/local/bin/hysteria"
+    [ -f "$hy" ] && return 0
+
+    local asfx="amd64"
+    if [ "$CPU_ARCH" = "aarch64" ]; then asfx="arm64";
+    elif [ "$CPU_ARCH" = "armv7" ]; then asfx="arm"; fi
+
+    info "正在下载 Hysteria 2 官方内核 (${asfx})..."
+    local url="https://github.com/apernet/hysteria/releases/latest/download/hysteria-linux-${asfx}"
+    if ! curl -fL --connect-timeout 15 --max-time 180 -o "$hy" "$url" 2>/dev/null; then
+        curl -fL --connect-timeout 15 --max-time 180 -o "$hy" "https://ghproxy.com/${url}" 2>/dev/null || true
+    fi
+    [ -s "$hy" ] || { error "Hysteria 2 下载失败，请检查网络。"; return 1; }
+    chmod +x "$hy"
+    success "Hysteria 2 安装成功: $($hy version 2>/dev/null | head -n1)"
+    return 0
+}
+
 # ---- Generate Vless Reality link ----
 make_vless_link() {
     local addr="$1" port="$2" uuid="$3" sni="$4" pubkey="$5" shortid="$6" flow="$7"
@@ -188,7 +208,24 @@ valid_port() {
     [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 1 ] && [ "$1" -le 65535 ]
 }
 
-# ---- Start a lightweight background HTTP subscription server for Clash YAML ----
+# ---- URL encode helper ----
+url_encode() {
+    local string="${1}"
+    local strlen=${#string}
+    local encoded=""
+    local pos c o
+    for (( pos=0 ; pos<strlen ; pos++ )); do
+        c=${string:$pos:1}
+        case "$c" in
+            [-_.~a-zA-Z0-9] ) o="${c}" ;;
+            * )               printf -v o '%%%02X' "'$c"
+        esac
+        encoded+="${o}"
+    done
+    echo "${encoded}"
+}
+
+# ---- Start a persistent background HTTP subscription server for Clash YAML ----
 start_sub_server() {
     local yaml_content="$1"
     local sub_port=20808
@@ -196,14 +233,49 @@ start_sub_server() {
     mkdir -p "$sub_dir"
     echo "$yaml_content" > "${sub_dir}/clash.yaml"
 
-    # Stop any previous sub server
-    pkill -f "hte_sub_server" 2>/dev/null || true
+    # Stop old process
+    pkill -f "http.server 20808" 2>/dev/null || true
+    pkill -f "SimpleHTTPServer 20808" 2>/dev/null || true
 
-    # Start a minimal python http server in background
+    # Ensure Python3 is available (for minimal OS images)
+    if ! command -v python3 >/dev/null 2>&1 && ! command -v python >/dev/null 2>&1; then
+        info "正在安装 python3 (用于订阅托管服务)..."
+        case "$PKG_MANAGER" in
+            apt) apt-get update -y >/dev/null 2>&1 && apt-get install -y python3 >/dev/null 2>&1 ;;
+            dnf|yum) yum install -y python3 >/dev/null 2>&1 || dnf install -y python3 >/dev/null 2>&1 ;;
+            apk) apk add python3 >/dev/null 2>&1 ;;
+        esac
+    fi
+
+    local py_bin=""
     if command -v python3 >/dev/null 2>&1; then
-        nohup python3 -m http.server "$sub_port" --directory "$sub_dir" >/dev/null 2>&1 &
+        py_bin=$(command -v python3)
     elif command -v python >/dev/null 2>&1; then
-        (cd "$sub_dir" && nohup python -m SimpleHTTPServer "$sub_port" >/dev/null 2>&1 &)
+        py_bin=$(command -v python)
+    fi
+
+    # Prefer systemd service for permanence (won't die on SSH exit)
+    if command -v systemctl >/dev/null 2>&1 && [ -n "$py_bin" ]; then
+        cat <<EOF > /etc/systemd/system/hte-sub.service
+[Unit]
+Description=HTE Clash Subscription HTTP Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=${sub_dir}
+ExecStart=${py_bin} -m http.server ${sub_port}
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        systemctl daemon-reload 2>/dev/null || true
+        systemctl enable hte-sub >/dev/null 2>&1 || true
+        systemctl restart hte-sub 2>/dev/null || true
+    elif [ -n "$py_bin" ]; then
+        nohup "$py_bin" -m http.server "$sub_port" --directory "$sub_dir" >/dev/null 2>&1 &
     fi
 
     open_port "$sub_port" tcp
@@ -228,9 +300,19 @@ setup_vless_reality() {
     read -r -p "确认使用该 IP （直接回车确认，或输入其他 IP）: " tmp_ip
     [ -n "$tmp_ip" ] && ipaddr="$tmp_ip"
 
+    local default_port=443
+    if ss -tulpn 2>/dev/null | grep -qE ':(443)\b'; then
+        warn "检测到 443 端口已被占用（例如已有 Nginx/宝塔/Web服务）！"
+        default_port=8443
+        if ss -tulpn 2>/dev/null | grep -qE ':(8443)\b'; then
+            default_port=2053
+        fi
+        info "已为您自动推荐空闲备用端口: ${default_port}"
+    fi
+
     local port=443
-    read -r -p "请输入节点端口 [默认 443]: " port
-    port=${port:-443}
+    read -r -p "请输入节点端口 [默认 ${default_port}]: " port
+    port=${port:-$default_port}
     valid_port "$port" || { error "端口无效"; pause; return; }
 
     # Auto-generate secrets
@@ -369,33 +451,59 @@ setup_hysteria2() {
     read -r -p "或自定义密码（回车自动生成）: " tmp
     [ -n "$tmp" ] && password="$tmp"
 
-    # Install xray-core (needed for hysteria2) — direct zip download
-    install_xray_core || { pause; return; }
-    local xray="/usr/local/bin/xray"
+    # Install Hysteria 2 official binary
+    install_hysteria_core || { pause; return; }
+    local hy="/usr/local/bin/hysteria"
 
-    local confdir="/usr/local/etc/xray"
-    mkdir -p "$confdir"
-    cat <<EOF > "${confdir}/config.json"
-{
-  "log": { "loglevel": "warning" },
-  "inbounds": [
-    {
-      "port": ${port},
-      "protocol": "hysteria2",
-      "settings": {
-        "password": "${password}"
-      }
-    }
-  ],
-  "outbounds": [ { "protocol": "freedom" } ]
-}
+    # Generate self-signed TLS cert for Hysteria 2
+    local hydir="/etc/hysteria"
+    mkdir -p "$hydir"
+    if [ ! -f "${hydir}/server.crt" ] || [ ! -f "${hydir}/server.key" ]; then
+        info "正在生成自签名 SSL 证书..."
+        openssl req -x509 -nodes -newkey ec:<(openssl ecparam -name prime256v1 2>/dev/null) \
+            -keyout "${hydir}/server.key" -out "${hydir}/server.crt" \
+            -subj "/CN=bing.com" -days 36500 >/dev/null 2>&1 || \
+        openssl req -x509 -nodes -newkey rsa:2048 \
+            -keyout "${hydir}/server.key" -out "${hydir}/server.crt" \
+            -subj "/CN=bing.com" -days 36500 >/dev/null 2>&1
+    fi
+
+    # Write Hysteria 2 server config
+    cat <<EOF > "${hydir}/config.yaml"
+listen: :${port}
+tls:
+  cert: ${hydir}/server.crt
+  key: ${hydir}/server.key
+auth:
+  type: password
+  password: ${password}
+masquerade:
+  type: file
+  file:
+    dir: /var/www/html
 EOF
+
+    # Write systemd service unit
+    cat <<EOF > /etc/systemd/system/hysteria-server.service
+[Unit]
+Description=Hysteria 2 Server Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/hysteria server --config /etc/hysteria/config.yaml
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
     systemctl daemon-reload 2>/dev/null || true
-    systemctl restart xray 2>/dev/null || systemctl start xray 2>/dev/null || {
-        error "Hysteria2 启动失败"; pause; return;
+    systemctl restart hysteria-server 2>/dev/null || systemctl start hysteria-server 2>/dev/null || {
+        error "Hysteria 2 启动失败，请检查 ${hydir}/config.yaml"; pause; return;
     }
-    systemctl enable xray >/dev/null 2>&1 || true
-    open_port "$port" tcp
+    systemctl enable hysteria-server >/dev/null 2>&1 || true
     open_port "$port" udp
 
     # Hysteria2 URI: hy2://password@ip:port?insecure=1#name
@@ -443,26 +551,34 @@ manage_nodes() {
     print_banner
     echo -e "${B_YELLOW}=== 节点运维管理 ===${NC}"
     echo -e " ${B_GREEN}1.${NC} 查看 Xray 运行状态"
-    echo -e " ${B_GREEN}2.${NC} 查看当前节点配置与端口监听"
-    echo -e " ${B_GREEN}3.${NC} 重启 Xray 服务"
-    echo -e " ${B_GREEN}4.${NC} 停止并彻底卸载节点服务 (Xray)"
+    echo -e " ${B_GREEN}2.${NC} 查看 Hysteria 2 运行状态"
+    echo -e " ${B_GREEN}3.${NC} 查看当前节点配置与端口监听"
+    echo -e " ${B_GREEN}4.${NC} 重启所有节点服务"
+    echo -e " ${B_GREEN}5.${NC} 停止并彻底卸载所有节点服务"
     echo -e " ${B_RED}0.${NC} 返回"
     echo ""
     read -r -p "请选择: " mg
     case "$mg" in
         1) systemctl status xray --no-pager 2>/dev/null | head -n 15 ;;
-        2)
+        2) systemctl status hysteria-server --no-pager 2>/dev/null | head -n 15 ;;
+        3)
             echo -e "已打开的监听端口: "
-            ss -tulpn 2>/dev/null | grep -iE 'xray|443|8443|20808' || echo "  (无)"
+            ss -tulpn 2>/dev/null | grep -iE 'xray|hysteria|443|8443|20808' || echo "  (无)"
             echo ""
             [ -f /var/www/hte_sub/clash.yaml ] && cat /var/www/hte_sub/clash.yaml
             ;;
-        3) systemctl restart xray && success "Xray 已重启" ;;
         4)
+            systemctl restart xray 2>/dev/null && success "Xray 已重启"
+            systemctl restart hysteria-server 2>/dev/null && success "Hysteria 2 已重启"
+            systemctl restart hte-sub 2>/dev/null && success "订阅服务已重启"
+            ;;
+        5)
             systemctl stop xray 2>/dev/null; systemctl disable xray 2>/dev/null
+            systemctl stop hysteria-server 2>/dev/null; systemctl disable hysteria-server 2>/dev/null
+            systemctl stop hte-sub 2>/dev/null; systemctl disable hte-sub 2>/dev/null
             pkill -f "http.server 20808" 2>/dev/null || true
-            rm -f /usr/local/etc/xray/config.json /var/www/hte_sub/clash.yaml
-            success "Xray 节点已停止并清理配置。";;
+            rm -f /usr/local/etc/xray/config.json /etc/hysteria/config.yaml /var/www/hte_sub/clash.yaml
+            success "所有节点及订阅服务已停止并清理配置。";;
         0) return ;;
         *) error "无效输入";;
     esac
