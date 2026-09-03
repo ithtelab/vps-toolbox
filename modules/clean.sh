@@ -93,33 +93,29 @@ launch_realtime_monitor() {
     esac
 }
 
-install_netdata() {
+launch_advanced_monitor() {
     print_banner
-    echo -e "${B_YELLOW}=== [4] 部署 Netdata 实时监控面板 ===${NC}"
-    info "正在安装 Netdata 实时性能监控 (CPU/内存/磁盘/网络可视化)..."
-    if command -v docker >/dev/null 2>&1; then
-        local port
-        read -r -p "请输入 Web 访问端口 [默认 19999]: " port
-        port=${port:-19999}
-        docker run -d --name=netdata --restart always \
-            -p "${port}:19999" \
-            -v netdata_config:/etc/netdata \
-            -v /proc:/host/proc:ro \
-            -v /sys:/host/sys:ro \
-            -v /var/run/docker.sock:/var/run/docker.sock:ro \
-            netdata/netdata >/dev/null 2>&1
-        open_port "$port" tcp
-        local ip
-        ip=$(get_ip_info)
-        success "Netdata 部署成功! 访问: http://${ip}:${port}"
-    else
-        info "未检测到 Docker, 使用官方安装脚本..."
-        bash <(curl -fsSL https://get.netdata.cloud/kickstart.sh) --non-interactive >/dev/null 2>&1 || \
-        error "Netdata 安装失败, 请检查网络。"
-        systemctl enable --now netdata >/dev/null 2>&1 || true
-        success "Netdata 安装完成! 默认端口 19999"
+    echo -e "${B_YELLOW}=== [4] 现代化轻量系统性能监控 (btop / htop) ===${NC}"
+    info "正在检测并启动轻量级交互式系统监控 (内存占用 < 15MB, 毫秒级响应, 免爆内存)..."
+
+    if ! command -v btop >/dev/null 2>&1; then
+        info "正在安装 btop (现代化监控仪表盘)..."
+        case "$PKG_MANAGER" in
+            apt) apt-get install -y btop >/dev/null 2>&1 || apt-get install -y htop >/dev/null 2>&1 ;;
+            dnf|yum) $PKG_MANAGER install -y btop >/dev/null 2>&1 || $PKG_MANAGER install -y htop >/dev/null 2>&1 ;;
+            apk) apk add btop >/dev/null 2>&1 || apk add htop >/dev/null 2>&1 ;;
+            pacman) pacman -S --noconfirm btop >/dev/null 2>&1 ;;
+        esac
     fi
-    pause
+
+    if command -v btop >/dev/null 2>&1; then
+        btop
+    elif command -v htop >/dev/null 2>&1; then
+        htop
+    else
+        warn "系统源未提供 btop，已自动使用 top 基础监控。"
+        top
+    fi
 }
 
 check_disk_health() {
@@ -229,7 +225,7 @@ menu_clean() {
         echo -e " ${B_GREEN}1.${NC} 系统深度垃圾清理 (旧内核/APT缓存/系统日志)"
         echo -e " ${B_GREEN}2.${NC} 查看服务器详细硬件与网络配置信息"
         echo -e " ${B_GREEN}3.${NC} 实时系统负载与网络流量监控 (htop / iftop)"
-        echo -e " ${B_GREEN}4.${NC} 部署 Netdata 实时监控面板"
+        echo -e " ${B_GREEN}4.${NC} 现代化轻量性能监控仪表盘 (btop / htop, 免爆内存)"
         echo -e " ${B_GREEN}5.${NC} 磁盘与 S.M.A.R.T. 健康检查"
         echo -e " ${B_GREEN}6.${NC} 系统快照备份一键导出"
         separator
@@ -240,7 +236,7 @@ menu_clean() {
             1) deep_clean_system ;;
             2) show_system_specs ;;
             3) launch_realtime_monitor ;;
-            4) install_netdata ;;
+            4) launch_advanced_monitor ;;
             5) check_disk_health ;;
             6) snapshot_backup ;;
             0) break ;;
