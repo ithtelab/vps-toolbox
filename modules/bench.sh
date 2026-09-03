@@ -117,8 +117,12 @@ run_speedtest() {
 measure_latency() {
     local host="$1"
     local ping_out
-    # Portable ping avg extraction (works on GNU, BSD, BusyBox/Alpine grep)
-    ping_out=$(ping -c 3 -W 2 "$host" 2>/dev/null | awk -F'/' '/min\/avg/ {print $5}')
+    # Fast ICMP check with hard 3s timeout to prevent hanging on blocked nodes
+    if command -v timeout >/dev/null 2>&1; then
+        ping_out=$(timeout 3 ping -c 2 -W 1 "$host" 2>/dev/null | awk -F'/' '/min\/avg/ {print $5}')
+    else
+        ping_out=$(ping -c 2 -W 1 "$host" 2>/dev/null | awk -F'/' '/min\/avg/ {print $5}')
+    fi
     if [ -n "$ping_out" ]; then
         echo "PING|$ping_out"
         return
