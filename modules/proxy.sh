@@ -264,23 +264,41 @@ install_singbox_vless() {
 menu_proxy() {
     while true; do
         print_banner
-        echo -e "${B_CYAN}【 代理搭建与端口转发服务 】${NC}"
+        echo -e "${B_CYAN}【 代理节点搭建与网络中转服务 】${NC}"
         separator
-        echo -e " ${B_GREEN}1.${NC} 一键搭建 Socks5 (SK5) 极简认证代理"
-        echo -e " ${B_GREEN}2.${NC} 卸载 Socks5 (SK5) 代理服务"
-        echo -e " ${B_GREEN}3.${NC} 一键搭建 Clash / Mihomo 服务端"
-        echo -e " ${B_GREEN}4.${NC} 一键部署 Realm 极速端口转发 (中转加速)"
-        echo -e " ${B_GREEN}5.${NC} VLESS-Reality / Hysteria 2 综合管理"
+        echo -e " ${B_GREEN}1.${NC} 一键搭建 VLESS-Reality 节点 (免域名/免证书/订阅+扫码, 推荐)"
+        echo -e " ${B_GREEN}2.${NC} 一键搭建 Hysteria 2 节点 (抗封锁/低延迟/UDP高速)"
+        echo -e " ${B_GREEN}3.${NC} 一键搭建 Socks5 (SK5) 极简认证代理"
+        echo -e " ${B_GREEN}4.${NC} 一键部署 Clash / Mihomo 服务端"
+        echo -e " ${B_GREEN}5.${NC} 一键部署 Realm 极速端口转发 (中转加速)"
+        echo -e " ${B_GREEN}6.${NC} 导入已有单链生成二维码"
+        echo -e " ${B_GREEN}7.${NC} 代理与节点综合运维管理 (状态/重启/卸载/重置订阅池)"
         separator
         echo -e " ${B_RED}0.${NC} 返回主菜单"
         echo ""
-        read -r -p "请输入选项 [0-5]: " proxy_choice
+        read -r -p "请输入选项 [0-7]: " proxy_choice
         case "$proxy_choice" in
-            1) install_socks5 ;;
-            2) uninstall_socks5 ;;
-            3) install_clash_party ;;
-            4) install_realm_forward ;;
-            5) install_singbox_vless ;;
+            1) setup_vless_reality ;;
+            2) setup_hysteria2 ;;
+            3) install_socks5 ;;
+            4) install_clash_party ;;
+            5) install_realm_forward ;;
+            6)
+                info "请把已生成的节点单链粘贴到下方，即可生成二维码。"
+                read -r -p "粘贴节点链接 (vless:// 或 hy2://): " user_link
+                if [ -n "$user_link" ]; then
+                    echo ""
+                    echo -e " ${B_CYAN}────────── 扫码导入 (手机客户端扫码) ──────────${NC}"
+                    qrencode_ensure
+                    show_qr_text "$user_link"
+                    echo ""
+                    echo -e " ${B_CYAN}也可直接复制该单链粘贴到 Clash / 客户端的【从剪贴板导入】。${NC}"
+                else
+                    error "未输入链接！"
+                fi
+                pause
+                ;;
+            7) manage_nodes ;;
             0) break ;;
             *)
                 echo -e "${RED}输入错误，请重新选择！${NC}"
